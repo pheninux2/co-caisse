@@ -112,8 +112,7 @@
             </div>
 
             <!-- Content Area -->
-            <div class="flex-1 overflow-hidden flex flex-col">
-                <div id="scrollableContent" class="flex-1 overflow-y-auto p-6">
+            <div class="flex-1 overflow-y-auto p-6">
                 <!-- Dashboard Section -->
                 <section id="dashboard-section" class="hidden">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -147,6 +146,110 @@
                             <h3 class="text-xl font-bold mb-4">Paiements</h3>
                             <div id="paymentBreakdown" class="space-y-2">
                                 <p class="text-gray-500 text-center py-4">Chargement...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Checkout Section -->
+                <section id="checkout-section" class="hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                        <!-- Product Selection -->
+                        <div class="lg:col-span-3">
+                            <div class="bg-white p-6 rounded-lg shadow-md mb-4">
+                                <h3 class="text-xl font-bold mb-4">Produits</h3>
+
+                                <div class="mb-4">
+                                    <input type="text" id="searchInput" placeholder="🔍 Rechercher produit ou code-barres..."
+                                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="text-sm font-semibold text-gray-700">Catégories</label>
+                                    <div id="categoriesList" class="flex flex-wrap gap-2 mt-2">
+                                        <button class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm">Tous</button>
+                                    </div>
+                                </div>
+
+                                <div id="productsList" class="grid grid-cols-4 gap-2 max-h-screen overflow-y-auto">
+                                    <p class="col-span-2 text-gray-500 text-center py-4">Chargement des produits...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cart Summary -->
+                        <div class="lg:col-span-2">
+                            <div class="bg-white p-6 rounded-lg shadow-md sticky top-24">
+                                <h3 class="text-xl font-bold mb-4">Panier</h3>
+
+                                <div id="cartItems" class="space-y-2 max-h-48 overflow-y-auto mb-4 border-b pb-4">
+                                    <p class="text-gray-500 text-center py-4">Aucun produit</p>
+                                </div>
+
+                                <div class="space-y-2 bg-gray-50 p-4 rounded-lg mb-4">
+                                    <div class="flex justify-between">
+                                        <span>Sous-total:</span>
+                                        <span id="subtotal" class="font-semibold">0,00 €</span>
+                                    </div>
+                                    <div class="flex justify-between text-orange-600">
+                                        <span>TVA (20%):</span>
+                                        <span id="taxAmount" class="font-semibold">0,00 €</span>
+                                    </div>
+                                    <div class="flex justify-between text-purple-600">
+                                        <span>Remise:</span>
+                                        <span id="discountDisplay" class="font-semibold">0,00 €</span>
+                                    </div>
+                                    <div class="border-t pt-2 flex justify-between text-lg font-bold text-blue-600">
+                                        <span>Total:</span>
+                                        <span id="totalAmount" class="text-2xl">0,00 €</span>
+                                    </div>
+                                </div>
+
+                                <!-- Payment Methods -->
+                                <div class="mb-4">
+                                    <label class="text-sm font-semibold text-gray-700">Moyen de paiement</label>
+                                    <div id="paymentMethods" class="grid grid-cols-2 gap-2 mt-2">
+                                        <button class="payment-method px-3 py-2 border-2 border-gray-300 rounded-lg text-sm font-semibold hover:border-blue-500 active:border-blue-500 active:bg-blue-50" data-method="cash">
+                                            💵 Espèces
+                                        </button>
+                                        <button class="payment-method px-3 py-2 border-2 border-gray-300 rounded-lg text-sm font-semibold hover:border-blue-500 active:border-blue-500 active:bg-blue-50" data-method="card">
+                                            💳 Carte
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Change Calculation -->
+                                <div class="mb-4" id="changeSection" style="display:none;">
+                                    <label class="text-sm font-semibold text-gray-700">Montant reçu</label>
+                                    <input type="number" id="amountReceived" placeholder="0,00"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <div id="changeDisplay" class="mt-2 p-2 bg-green-50 rounded-lg hidden">
+                                        <p class="text-sm text-gray-600">Reste à rendre:</p>
+                                        <p id="changeAmount" class="text-2xl font-bold text-green-600">0,00 €</p>
+                                    </div>
+                                </div>
+
+                                <!-- Tools -->
+                                <div class="grid grid-cols-2 gap-3 mb-4">
+                                    <button onclick="app.openCalculator()" class="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition text-center">
+                                        <span class="text-2xl">🧮</span>
+                                        <p class="text-sm font-semibold mt-2">Calculatrice</p>
+                                    </button>
+                                    <button onclick="app.openDiscountDialog()" class="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition text-center">
+                                        <span class="text-2xl">🏷️</span>
+                                        <p class="text-sm font-semibold mt-2">Remise</p>
+                                    </button>
+                                </div>
+
+                                <!-- Action Buttons -->
+                                <div class="flex gap-2">
+                                    <button onclick="app.cart.clear()" class="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition">
+                                        Annuler
+                                    </button>
+                                    <button onclick="app.processPayment()" class="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold transition">
+                                        Encaisser
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -339,143 +442,14 @@
                     </div>
                 </section>
             </div>
-            <!-- Checkout Section - Responsive (Full Height) -->
-            <section id="checkout-section" class="hidden flex-1 flex flex-col overflow-hidden">
-                <!-- Mobile Layout (0-640px) -->
-                <div class="md:hidden flex flex-col h-full gap-2 p-2">
-                    <!-- Products -->
-                    <div class="flex-1 bg-white rounded-lg shadow-md flex flex-col min-h-0">
-                        <h3 class="text-base font-bold p-2 border-b">Produits</h3>
-                        <input type="text" id="searchInput" placeholder="🔍 Rechercher..." class="mx-2 mt-2 px-2 py-1 text-sm border rounded-lg">
-                        <div id="categoriesList" class="flex gap-1 px-2 mt-1 mb-1 overflow-x-auto">
-                            <button class="px-2 py-1 bg-blue-500 text-white rounded text-xs whitespace-nowrap">Tous</button>
-                        </div>
-                        <div id="productsList" class="grid grid-cols-3 gap-1 overflow-y-auto flex-1 p-2">
-                            <p class="col-span-3 text-center text-xs text-gray-500">Chargement...</p>
-                        </div>
-                    </div>
-
-                    <!-- Cart -->
-                    <div class="bg-white rounded-lg shadow-md p-2 flex flex-col max-h-52">
-                        <h3 class="font-bold text-sm mb-1">Panier</h3>
-                        <div id="cartItems" class="text-xs overflow-y-auto flex-1 mb-1">
-                            <p class="text-center text-gray-500">Aucun produit</p>
-                        </div>
-                        <div class="bg-gray-50 p-1 rounded text-xs space-y-0.5 mb-1">
-                            <div class="flex justify-between"><span>Sous-total:</span><span id="subtotal">0,00 €</span></div>
-                            <div class="flex justify-between text-orange-600"><span>TVA:</span><span id="taxAmount">0,00 €</span></div>
-                            <div class="flex justify-between text-purple-600"><span>Remise:</span><span id="discountDisplay">0,00 €</span></div>
-                            <div class="border-t flex justify-between font-bold"><span>Total:</span><span id="totalAmount">0,00 €</span></div>
-                        </div>
-                        <div id="paymentMethods" class="grid grid-cols-2 gap-1 mb-1">
-                            <button class="payment-method py-1 border-2 text-xs rounded" data-method="cash">💵</button>
-                            <button class="payment-method py-1 border-2 text-xs rounded" data-method="card">💳</button>
-                        </div>
-                        <div class="grid grid-cols-4 gap-1">
-                            <button onclick="app.openCalculator()" class="bg-yellow-500 text-white rounded text-xs py-1">🧮</button>
-                            <button onclick="app.openDiscountDialog()" class="bg-purple-500 text-white rounded text-xs py-1">🏷️</button>
-                            <button onclick="app.cart.clear()" class="bg-gray-300 text-xs py-1 rounded">Annuler</button>
-                            <button onclick="app.processPayment()" class="bg-green-500 text-white text-xs py-1 rounded">Payer</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tablet Layout (641px-1024px) -->
-                <div class="hidden md:flex lg:hidden flex-col h-full gap-2 p-2">
-                    <!-- Products -->
-                    <div class="flex-1 bg-white rounded-lg shadow-md flex flex-col">
-                        <h3 class="text-sm font-bold p-2 border-b">Produits</h3>
-                        <input type="text" id="searchInput" placeholder="🔍 Chercher..." class="mx-2 mt-2 px-2 py-1 text-xs border rounded">
-                        <div id="categoriesList" class="flex gap-1 px-2 mt-1 mb-1 overflow-x-auto">
-                            <button class="px-2 py-1 bg-blue-500 text-white rounded text-xs whitespace-nowrap">Tous</button>
-                        </div>
-                        <div id="productsList" class="grid grid-cols-4 gap-1 overflow-y-auto flex-1 p-2">
-                            <p class="col-span-2 text-center text-xs text-gray-500">Chargement...</p>
-                        </div>
-                    </div>
-
-                    <!-- Cart -->
-                    <div class="bg-white rounded-lg shadow-md p-2 flex flex-col max-h-48">
-                        <h3 class="font-bold text-sm mb-1">Panier</h3>
-                        <div id="cartItems" class="text-xs overflow-y-auto flex-1 mb-1 max-h-16">
-                            <p class="text-center text-gray-500">Aucun produit</p>
-                        </div>
-                        <div class="bg-gray-50 p-1 rounded text-xs space-y-0.5 mb-1">
-                            <div class="flex justify-between"><span>Sous-total:</span><span id="subtotal">0,00 €</span></div>
-                            <div class="flex justify-between text-orange-600"><span>TVA:</span><span id="taxAmount">0,00 €</span></div>
-                            <div class="flex justify-between text-purple-600"><span>Remise:</span><span id="discountDisplay">0,00 €</span></div>
-                            <div class="border-t flex justify-between font-bold text-sm"><span>Total:</span><span id="totalAmount">0,00 €</span></div>
-                        </div>
-                        <div id="paymentMethods" class="grid grid-cols-2 gap-1 mb-1">
-                            <button class="payment-method py-1 border-2 text-xs rounded" data-method="cash">💵 Espèces</button>
-                            <button class="payment-method py-1 border-2 text-xs rounded" data-method="card">💳 Carte</button>
-                        </div>
-                        <div class="grid grid-cols-4 gap-1 text-xs">
-                            <button onclick="app.openCalculator()" class="bg-yellow-500 text-white rounded py-1">🧮</button>
-                            <button onclick="app.openDiscountDialog()" class="bg-purple-500 text-white rounded py-1">🏷️</button>
-                            <button onclick="app.cart.clear()" class="bg-gray-300 rounded py-1">Annuler</button>
-                            <button onclick="app.processPayment()" class="bg-green-500 text-white rounded py-1">Payer</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Desktop Layout (1025px+) -->
-                <div class="hidden lg:grid lg:grid-cols-5 gap-3 h-full p-3">
-                    <!-- Products -->
-                    <div class="lg:col-span-3 bg-white rounded-lg shadow-md flex flex-col">
-                        <h3 class="text-lg font-bold p-3 border-b">Produits</h3>
-                        <input type="text" id="searchInput" placeholder="🔍 Rechercher..." class="mx-3 mt-2 px-3 py-2 text-sm border rounded-lg">
-                        <div id="categoriesList" class="flex gap-2 px-3 mt-2 mb-2 overflow-x-auto">
-                            <button class="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm whitespace-nowrap">Tous</button>
-                        </div>
-                        <div id="productsList" class="grid grid-cols-5 gap-2 overflow-y-auto flex-1 p-3">
-                            <p class="col-span-2 text-center text-sm text-gray-500">Chargement...</p>
-                        </div>
-                    </div>
-
-                    <!-- Cart -->
-                    <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-3 flex flex-col">
-                        <h3 class="text-lg font-bold mb-3">Panier</h3>
-                        <div id="cartItems" class="flex-1 overflow-y-auto mb-3 border-b pb-3">
-                            <p class="text-center text-gray-500">Aucun produit</p>
-                        </div>
-                        <div class="bg-gray-50 p-3 rounded-lg mb-3 space-y-2 text-sm">
-                            <div class="flex justify-between"><span>Sous-total:</span><span id="subtotal">0,00 €</span></div>
-                            <div class="flex justify-between text-orange-600"><span>TVA (20%):</span><span id="taxAmount">0,00 €</span></div>
-                            <div class="flex justify-between text-purple-600"><span>Remise:</span><span id="discountDisplay">0,00 €</span></div>
-                            <div class="border-t pt-2 flex justify-between font-bold text-base"><span>Total:</span><span id="totalAmount">0,00 €</span></div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="text-xs font-semibold mb-2">Paiement</label>
-                            <div id="paymentMethods" class="grid grid-cols-2 gap-2">
-                                <button class="payment-method px-3 py-2 border-2 text-sm rounded-lg" data-method="cash">💵 Espèces</button>
-                                <button class="payment-method px-3 py-2 border-2 text-sm rounded-lg" data-method="card">💳 Carte</button>
-                            </div>
-                        </div>
-                        <div id="changeSection" class="mb-3 text-sm hidden">
-                            <label class="text-xs font-semibold">Montant reçu</label>
-                            <input type="number" id="amountReceived" placeholder="0,00" class="w-full px-3 py-2 border rounded-lg">
-                            <div id="changeDisplay" class="mt-2 p-2 bg-green-50 rounded-lg hidden">
-                                <p class="text-xs text-gray-600">Reste à rendre:</p>
-                                <p id="changeAmount" class="text-lg font-bold text-green-600">0,00 €</p>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2 mb-3">
-                            <button onclick="app.openCalculator()" class="px-3 py-2 bg-yellow-500 text-white rounded-lg font-bold text-sm">🧮 Calc</button>
-                            <button onclick="app.openDiscountDialog()" class="px-3 py-2 bg-purple-500 text-white rounded-lg font-bold text-sm">🏷️ Remise</button>
-                        </div>
-                        <div class="flex gap-2">
-                            <button onclick="app.cart.clear()" class="flex-1 px-3 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg font-bold">Annuler</button>
-                            <button onclick="app.processPayment()" class="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg font-bold">Encaisser</button>
-                        </div>
-                    </div>
-                </div>
-            </section>
         </main>
     </div>
 
     <!-- Modal Dialogs -->
-    <div id="productModal"
+    <div id="productModal" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 class="text-2xl font-bold mb-4">Produit</h2>
+            <form onsubmit="app.saveProduct(event)">
                 <input type="hidden" id="productId">
                 <div class="space-y-4">
                     <input type="text" id="productName" placeholder="Nom du produit" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">

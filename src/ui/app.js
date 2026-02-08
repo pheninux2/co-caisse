@@ -7,19 +7,26 @@ const API_URL = 'http://localhost:5000/api';
 class CocaisseApp {
   constructor() {
     this.currentUser = null;
-    this.currentSection = 'dashboard';
+    this.currentSection = 'pos';
     this.products = [];
     this.categories = [];
     this.cart = [];
     this.currentDiscount = 0;
     this.settings = {};
     this.calculator = { value: '0', operation: null, operand: null };
+    this.heldCarts = [];
 
     this.init();
   }
 
   async init() {
     console.log('✅ Co-Caisse application initialized');
+
+    // Charger les paramètres sauvegardés
+    const savedSettings = localStorage.getItem('cocaisse_settings');
+    if (savedSettings) {
+      this.settings = JSON.parse(savedSettings);
+    }
 
     // Charger l'utilisateur depuis localStorage
     const savedUser = localStorage.getItem('currentUser');
@@ -33,7 +40,6 @@ class CocaisseApp {
         this.showLoginScreen();
       }
     } else {
-      // Afficher l'écran de connexion
       console.log('🔐 Aucun utilisateur connecté');
       this.showLoginScreen();
     }
@@ -66,42 +72,32 @@ class CocaisseApp {
     // Mettre à jour l'affichage de l'utilisateur
     const userDisplay = document.getElementById('currentUser');
     if (userDisplay) {
-      userDisplay.textContent = this.currentUser.username || 'Admin';
+      userDisplay.textContent = this.currentUser?.username || 'Admin';
     }
 
-    // Afficher le tableau de bord par défaut pour cashier
-    if (this.currentUser.role === 'cashier') {
-      this.showSection('checkout');
-    }
+    // Afficher la caisse par défaut
+    this.showSection('pos');
   }
 
   filterMenuByRole() {
     const userRole = this.currentUser?.role || 'cashier';
 
-    // Filtrer les onglets de navigation
-    const navItems = document.querySelectorAll('.nav-item');
-    navItems.forEach(item => {
+    // Filtrer les onglets de navigation desktop
+    document.querySelectorAll('.nav-tab').forEach(item => {
       const allowedRoles = (item.getAttribute('data-role') || '').split(',').map(r => r.trim());
-
-      if (allowedRoles.includes(userRole)) {
-        item.classList.remove('hidden');
-        item.style.display = '';
-      } else {
-        item.classList.add('hidden');
-        item.style.display = 'none';
-      }
+      item.style.display = allowedRoles.includes(userRole) ? '' : 'none';
     });
 
-    // Filtrer les boutons Export et Import
-    const exportBtn = document.querySelector('.export-btn');
-    const importBtn = document.querySelector('.import-btn');
+    // Filtrer les onglets mobile
+    document.querySelectorAll('.mobile-nav-item').forEach(item => {
+      const allowedRoles = (item.getAttribute('data-role') || '').split(',').map(r => r.trim());
+      item.style.display = allowedRoles.includes(userRole) ? '' : 'none';
+    });
 
-    if (userRole === 'admin') {
-      if (exportBtn) exportBtn.style.display = '';
-      if (importBtn) importBtn.style.display = '';
-    } else {
-      if (exportBtn) exportBtn.style.display = 'none';
-      if (importBtn) importBtn.style.display = 'none';
+    // Filtrer le bouton export
+    const exportBtn = document.querySelector('.export-btn');
+    if (exportBtn) {
+      exportBtn.style.display = userRole === 'admin' ? '' : 'none';
     }
 
     console.log(`✅ Menu filtré pour le rôle: ${userRole}`);
@@ -124,21 +120,15 @@ class CocaisseApp {
       if (response.ok) {
         const user = await response.json();
         this.currentUser = user;
-
-        // Sauvegarder l'utilisateur
         localStorage.setItem('currentUser', JSON.stringify(user));
-
         console.log('✅ Connexion réussie:', user.username);
 
-        // Vider les champs de connexion
         document.getElementById('loginUsername').value = '';
         document.getElementById('loginPassword').value = '';
 
-        // Afficher l'app principal
         this.showMainApp();
       } else {
         alert('❌ Identifiants incorrects');
-        console.log('❌ Identifiants incorrects');
       }
     } catch (error) {
       console.error('Erreur de connexion:', error);
@@ -147,31 +137,27 @@ class CocaisseApp {
   }
 
   setupEventListeners() {
-    // Search products - attacher à TOUS les searchInput
-    document.querySelectorAll('#searchInput').forEach(input => {
-      input.addEventListener('input', (e) => {
-        this.searchProducts(e.target.value);
-      });
+    // Mobile menu button
+    document.getElementById('mobileMenuBtn')?.addEventListener('click', () => {
+      this.openMobileMenu();
+    });
+
+    // Search products
+    document.getElementById('searchInput')?.addEventListener('input', (e) => {
+      this.searchProducts(e.target.value);
     });
 
     // Payment methods
     document.querySelectorAll('.payment-method').forEach(btn => {
       btn.addEventListener('click', (e) => {
         document.querySelectorAll('.payment-method').forEach(b => b.classList.remove('active'));
-        e.target.closest('button').classList.add('active');
+        e.currentTarget.classList.add('active');
         this.updateChangeSection();
       });
     });
 
-    // Amount received - attacher à TOUS les amountReceived
-    document.querySelectorAll('#amountReceived').forEach(input => {
-      input.addEventListener('input', () => {
-        this.calculateChange();
-      });
-    });
-
-    // Amount received input
-    document.getElementById('amountReceived')?.addEventListener('input', (e) => {
+    // Amount received
+    document.getElementById('amountReceived')?.addEventListener('input', () => {
       this.calculateChange();
     });
 
@@ -179,6 +165,15 @@ class CocaisseApp {
     document.getElementById('productsSearch')?.addEventListener('input', (e) => {
       this.filterProducts(e.target.value);
     });
+  }
+
+  // ===== MOBILE MENU =====
+  openMobileMenu() {
+    document.getElementById('mobileDrawer')?.classList.remove('hidden');
+  }
+
+  closeMobileMenu() {
+    document.getElementById('mobileDrawer')?.classList.add('hidden');
   }
 
   // ===== CART MANAGEMENT =====
@@ -209,106 +204,122 @@ class CocaisseApp {
   updateCartItemQty(productId, quantity) {
     const item = this.cart.find(i => i.id === productId);
     if (item) {
-      item.quantity = Math.max(1, quantity);
+      item.quantity = Math.max(1, parseInt(quantity) || 1);
       this.updateCartDisplay();
     }
   }
 
-  updateCartDisplay() {
-    const cartItems = document.querySelectorAll('#cartItems');
-    if (cartItems.length === 0) return;
+  clearCart() {
+    if (this.cart.length === 0) return;
+    if (confirm('Vider le panier ?')) {
+      this.cart = [];
+      this.currentDiscount = 0;
+      this.updateCartDisplay();
+    }
+  }
 
-    const html = this.cart.length === 0
-      ? '<p class="text-gray-500 text-center py-4 text-xs md:text-sm">Aucun produit</p>'
-      : this.cart.map(item => `
-      <div class="flex justify-between items-center p-1 md:p-2 bg-gray-50 rounded text-xs md:text-sm">
-        <div class="flex-1 min-w-0">
-          <p class="font-semibold truncate">${item.name}</p>
-          <p class="text-gray-500">${item.price.toFixed(2)} € x ${item.quantity}</p>
-        </div>
-        <div class="text-right mx-1">
-          <p class="font-bold">${(item.price * item.quantity).toFixed(2)} €</p>
-          <input type="number" value="${item.quantity}" min="1"
-                 onchange="app.updateCartItemQty('${item.id}', this.value)"
-                 class="w-10 md:w-12 px-1 py-0.5 text-xs border border-gray-300 rounded">
-        </div>
-        <button onclick="app.removeFromCart('${item.id}')" class="ml-1 text-red-500 hover:text-red-700 font-bold">✕</button>
-      </div>
-    `).join('');
-
-    // Mettre à jour tous les cartItems
-    cartItems.forEach(cart => {
-      cart.innerHTML = html;
+  holdCart() {
+    if (this.cart.length === 0) {
+      alert('Le panier est vide');
+      return;
+    }
+    this.heldCarts.push({
+      items: [...this.cart],
+      discount: this.currentDiscount,
+      timestamp: new Date()
     });
+    this.cart = [];
+    this.currentDiscount = 0;
+    this.updateCartDisplay();
+    alert(`✅ Panier mis en attente (${this.heldCarts.length} en attente)`);
+  }
+
+  updateCartDisplay() {
+    const cartItems = document.getElementById('cartItems');
+    const cartCount = document.getElementById('cartCount');
+
+    if (!cartItems) return;
+
+    const totalItems = this.cart.reduce((sum, item) => sum + item.quantity, 0);
+    if (cartCount) cartCount.textContent = totalItems;
+
+    if (this.cart.length === 0) {
+      cartItems.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">Panier vide</p>';
+    } else {
+      cartItems.innerHTML = this.cart.map(item => `
+        <div class="cart-item">
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-sm text-gray-800 truncate">${item.name}</p>
+            <p class="text-xs text-gray-500">${item.price.toFixed(2)} € × ${item.quantity}</p>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="app.updateCartItemQty('${item.id}', ${item.quantity - 1})" class="w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded text-gray-600 text-sm font-bold">−</button>
+            <span class="w-6 text-center text-sm font-medium">${item.quantity}</span>
+            <button onclick="app.updateCartItemQty('${item.id}', ${item.quantity + 1})" class="w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded text-gray-600 text-sm font-bold">+</button>
+          </div>
+          <p class="font-bold text-sm text-indigo-600 min-w-[60px] text-right">${(item.price * item.quantity).toFixed(2)} €</p>
+          <button onclick="app.removeFromCart('${item.id}')" class="text-red-400 hover:text-red-600 ml-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+      `).join('');
+    }
 
     this.updateTotals();
   }
 
   updateTotals() {
     const subtotal = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const tax = subtotal * 0.20; // 20% TVA
+    const tax = subtotal * 0.20;
     const discount = this.currentDiscount;
     const total = subtotal + tax - discount;
 
-    // Mettre à jour TOUS les éléments
-    document.querySelectorAll('#subtotal').forEach(el => {
-      el.textContent = subtotal.toFixed(2).replace('.', ',') + ' €';
-    });
-    document.querySelectorAll('#taxAmount').forEach(el => {
-      el.textContent = tax.toFixed(2).replace('.', ',') + ' €';
-    });
-    document.querySelectorAll('#discountDisplay').forEach(el => {
-      el.textContent = discount.toFixed(2).replace('.', ',') + ' €';
-    });
-    document.querySelectorAll('#totalAmount').forEach(el => {
-      el.textContent = total.toFixed(2).replace('.', ',') + ' €';
-    });
+    document.getElementById('subtotal').textContent = subtotal.toFixed(2).replace('.', ',') + ' €';
+    document.getElementById('taxAmount').textContent = tax.toFixed(2).replace('.', ',') + ' €';
+    document.getElementById('totalAmount').textContent = total.toFixed(2).replace('.', ',') + ' €';
+
+    const discountRow = document.getElementById('discountRow');
+    const discountDisplay = document.getElementById('discountDisplay');
+    if (discountRow && discountDisplay) {
+      if (discount > 0) {
+        discountRow.style.display = '';
+        discountDisplay.textContent = '-' + discount.toFixed(2).replace('.', ',') + ' €';
+      } else {
+        discountRow.style.display = 'none';
+      }
+    }
+
+    this.calculateChange();
   }
 
   updateChangeSection() {
     const selected = document.querySelector('.payment-method.active');
-    const changeSections = document.querySelectorAll('#changeSection');
+    const changeSection = document.getElementById('changeSection');
 
-    changeSections.forEach(changeSection => {
+    if (changeSection) {
       if (selected?.dataset.method === 'cash') {
-        changeSection.classList.remove('hidden');
         changeSection.style.display = '';
       } else {
-        changeSection.classList.add('hidden');
         changeSection.style.display = 'none';
       }
-    });
+    }
   }
 
   calculateChange() {
-    const amountReceivedInputs = document.querySelectorAll('#amountReceived');
-    if (amountReceivedInputs.length === 0) return;
+    const amountInput = document.getElementById('amountReceived');
+    const changeAmount = document.getElementById('changeAmount');
 
-    const amountReceived = parseFloat(amountReceivedInputs[0]?.value || 0);
-    const totalAmount = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const tax = totalAmount * 0.20;
-    const discount = this.currentDiscount;
-    const total = totalAmount + tax - discount;
+    if (!amountInput || !changeAmount) return;
 
+    const amountReceived = parseFloat(amountInput.value || 0);
+    const subtotal = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const total = subtotal * 1.20 - this.currentDiscount;
     const change = amountReceived - total;
 
-    // Mettre à jour TOUS les changeDisplay et changeAmount
-    document.querySelectorAll('#changeDisplay').forEach(changeDisplay => {
-      if (amountReceived > 0) {
-        changeDisplay.classList.remove('hidden');
-        changeDisplay.style.display = '';
-      } else {
-        changeDisplay.classList.add('hidden');
-        changeDisplay.style.display = 'none';
-      }
-    });
-
-    document.querySelectorAll('#changeAmount').forEach(changeAmount => {
-      changeAmount.textContent = change.toFixed(2).replace('.', ',') + ' €';
-      changeAmount.className = change >= 0
-        ? 'text-2xl font-bold text-green-600'
-        : 'text-2xl font-bold text-red-600';
-    });
+    changeAmount.textContent = change.toFixed(2).replace('.', ',') + ' €';
+    changeAmount.className = change >= 0
+      ? 'font-bold text-green-600'
+      : 'font-bold text-red-600';
   }
 
   // ===== DATA MANAGEMENT =====
@@ -340,6 +351,7 @@ class CocaisseApp {
       const response = await fetch(`${API_URL}/products`);
       this.products = await response.json();
       this.renderProducts();
+      this.filterProducts('');
     } catch (error) {
       console.error('Error loading products:', error);
     }
@@ -350,47 +362,46 @@ class CocaisseApp {
     if (!categoriesGrid) return;
 
     if (this.categories.length === 0) {
-      categoriesGrid.innerHTML = '<p class="col-span-full text-center py-4 text-gray-500">Aucune catégorie</p>';
+      categoriesGrid.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">Aucune catégorie</p>';
       return;
     }
 
     categoriesGrid.innerHTML = this.categories.map(cat => `
-      <div class="category-card p-4" style="background-color: ${cat.color || '#f3f4f6'}80">
-        <div class="flex justify-between items-start mb-2">
-          <h4 class="font-bold text-lg">${cat.name}</h4>
-          <div class="flex gap-1">
-            <button onclick="app.openCategoryDialog('${cat.id}')" class="text-blue-500 hover:text-blue-700">✏️</button>
-            <button onclick="app.deleteCategory('${cat.id}')" class="text-red-500 hover:text-red-700">🗑️</button>
+      <div class="category-card-item" style="border-left: 4px solid ${cat.color || '#6366f1'}">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm" style="background-color: ${cat.color || '#6366f1'}">
+            ${cat.name.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p class="font-semibold text-sm text-gray-800">${cat.name}</p>
+            <p class="text-xs text-gray-500">${this.products.filter(p => p.category_id === cat.id).length} produits</p>
           </div>
         </div>
-        ${cat.image_url ? `<img src="${cat.image_url}" alt="" class="w-full h-24 object-cover rounded mb-2">` : ''}
-        <p class="text-sm text-gray-600">${cat.description || ''}</p>
-        <p class="text-xs text-gray-500 mt-2">${this.products.filter(p => p.category_id === cat.id).length} produits</p>
+        <div class="flex gap-1">
+          <button onclick="app.openCategoryDialog('${cat.id}')" class="action-btn action-btn-edit">✏️</button>
+          <button onclick="app.deleteCategory('${cat.id}')" class="action-btn action-btn-delete">🗑️</button>
+        </div>
       </div>
     `).join('');
   }
 
   renderCategoryFilter() {
-    const categoriesLists = document.querySelectorAll('#categoriesList');
-    if (categoriesLists.length === 0) return;
+    const categoriesList = document.getElementById('categoriesList');
+    if (!categoriesList) return;
 
-    const html = `
-      <button class="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm" onclick="app.filterByCategory('')">Tous</button>
+    categoriesList.innerHTML = `
+      <button class="category-btn active" onclick="app.filterByCategory('')">Tous</button>
       ${this.categories.map(cat => `
-        <button class="px-3 py-2 bg-gray-200 hover:bg-blue-500 hover:text-white rounded-lg text-sm transition"
-                onclick="app.filterByCategory('${cat.id}')">${cat.name}</button>
+        <button class="category-btn" onclick="app.filterByCategory('${cat.id}')" style="--cat-color: ${cat.color || '#6366f1'}">
+          ${cat.name}
+        </button>
       `).join('')}
     `;
-
-    // Mettre à jour tous les éléments categoriesList
-    categoriesLists.forEach(list => {
-      list.innerHTML = html;
-    });
   }
 
   renderProducts(filter = '') {
-    const productsLists = document.querySelectorAll('#productsList');
-    if (productsLists.length === 0) return;
+    const productsList = document.getElementById('productsList');
+    if (!productsList) return;
 
     let filtered = this.products.filter(p => p.active !== false);
 
@@ -398,30 +409,36 @@ class CocaisseApp {
       filtered = filtered.filter(p => p.category_id === filter);
     }
 
-    const html = filtered.length === 0
-      ? '<p class="col-span-2 text-gray-500 text-center py-4">Aucun produit</p>'
-      : filtered.map(product => `
+    if (filtered.length === 0) {
+      productsList.innerHTML = '<p class="col-span-full text-gray-400 text-center py-8">Aucun produit</p>';
+      return;
+    }
+
+    productsList.innerHTML = filtered.map(product => `
       <div class="product-card" onclick="app.addToCart('${product.id}')">
-        ${product.image_url ? `<img src="${product.image_url}" alt="${product.name}">` : '<div class="w-full h-24 bg-gray-200 rounded-md mb-2 flex items-center justify-center">📦</div>'}
+        ${product.image_url 
+          ? `<img src="${product.image_url}" alt="${product.name}" class="product-card-img">` 
+          : `<div class="w-full aspect-square bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg mb-1.5 flex items-center justify-center text-2xl">📦</div>`
+        }
         <p class="product-card-name">${product.name}</p>
-        <p class="text-xs text-gray-500 truncate">${product.barcode || '-'}</p>
         <p class="product-card-price">${product.price.toFixed(2)} €</p>
       </div>
     `).join('');
-
-    // Mettre à jour tous les éléments productsList
-    productsLists.forEach(list => {
-      list.innerHTML = html;
-    });
   }
 
   filterByCategory(categoryId) {
+    // Update active state
+    document.querySelectorAll('.category-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    event?.target?.classList.add('active');
+
     this.renderProducts(categoryId);
   }
 
   searchProducts(query) {
-    const productsLists = document.querySelectorAll('#productsList');
-    if (productsLists.length === 0) return;
+    const productsList = document.getElementById('productsList');
+    if (!productsList) return;
 
     if (!query.trim()) {
       this.renderProducts();
@@ -434,21 +451,21 @@ class CocaisseApp {
       p.description?.toLowerCase().includes(query.toLowerCase())
     );
 
-    const html = filtered.length === 0
-      ? '<p class="col-span-2 text-gray-500 text-center py-4">Aucun produit trouvé</p>'
-      : filtered.map(product => `
+    if (filtered.length === 0) {
+      productsList.innerHTML = '<p class="col-span-full text-gray-400 text-center py-8">Aucun produit trouvé</p>';
+      return;
+    }
+
+    productsList.innerHTML = filtered.map(product => `
       <div class="product-card" onclick="app.addToCart('${product.id}')">
-        ${product.image_url ? `<img src="${product.image_url}" alt="${product.name}">` : '<div class="w-full h-24 bg-gray-200 rounded-md mb-2 flex items-center justify-center">📦</div>'}
+        ${product.image_url 
+          ? `<img src="${product.image_url}" alt="${product.name}" class="product-card-img">` 
+          : `<div class="w-full aspect-square bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg mb-1.5 flex items-center justify-center text-2xl">📦</div>`
+        }
         <p class="product-card-name">${product.name}</p>
-        <p class="text-xs text-gray-500 truncate">${product.barcode || '-'}</p>
         <p class="product-card-price">${product.price.toFixed(2)} €</p>
       </div>
     `).join('');
-
-    // Mettre à jour tous les éléments productsList
-    productsLists.forEach(list => {
-      list.innerHTML = html;
-    });
   }
 
   filterProducts(query) {
@@ -462,23 +479,30 @@ class CocaisseApp {
       );
     }
 
+    if (filtered.length === 0) {
+      table.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-400">Aucun produit</td></tr>';
+      return;
+    }
+
     table.innerHTML = filtered.map(product => `
       <tr>
-        <td class="px-4 py-2">${product.name}</td>
-        <td class="px-4 py-2">${this.categories.find(c => c.id === product.category_id)?.name || '-'}</td>
-        <td class="px-4 py-2 text-right">${product.price.toFixed(2)} €</td>
-        <td class="px-4 py-2 text-center">${product.stock || 0}</td>
-        <td class="px-4 py-2 text-center">${product.tax_rate || 20}%</td>
-        <td class="px-4 py-2 text-center">
-          <button onclick="app.openProductDialog('${product.id}')" class="text-blue-500 hover:text-blue-700">✏️</button>
-          <button onclick="app.deleteProduct('${product.id}')" class="text-red-500 hover:text-red-700">🗑️</button>
+        <td class="px-3 py-2">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm">📦</div>
+            <span class="font-medium">${product.name}</span>
+          </div>
+        </td>
+        <td class="px-3 py-2 hidden sm:table-cell text-gray-500">${this.categories.find(c => c.id === product.category_id)?.name || '-'}</td>
+        <td class="px-3 py-2 text-right font-semibold text-indigo-600">${product.price.toFixed(2)} €</td>
+        <td class="px-3 py-2 text-center hidden md:table-cell">
+          <span class="badge ${product.stock > 10 ? 'bg-green-100 text-green-700' : product.stock > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}">${product.stock || 0}</span>
+        </td>
+        <td class="px-3 py-2 text-center">
+          <button onclick="app.openProductDialog('${product.id}')" class="action-btn action-btn-edit">✏️</button>
+          <button onclick="app.deleteProduct('${product.id}')" class="action-btn action-btn-delete">🗑️</button>
         </td>
       </tr>
     `).join('');
-
-    if (filtered.length === 0) {
-      table.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">Aucun produit</td></tr>';
-    }
   }
 
   async loadDashboard() {
@@ -507,19 +531,19 @@ class CocaisseApp {
       if (!container) return;
 
       if (transactions.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-center py-4">Aucune transaction</p>';
+        container.innerHTML = '<p class="text-gray-400 text-center py-4">Aucune transaction</p>';
         return;
       }
 
       container.innerHTML = transactions.map(t => `
-        <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+        <div class="transaction-item">
           <div>
-            <p class="font-semibold text-sm">${t.receipt_number}</p>
+            <p class="font-semibold text-sm text-gray-800">${t.receipt_number}</p>
             <p class="text-xs text-gray-500">${new Date(t.transaction_date).toLocaleString('fr-FR')}</p>
           </div>
           <div class="text-right">
-            <p class="font-bold">${t.total.toFixed(2)} €</p>
-            <p class="text-xs text-gray-500">${t.payment_method}</p>
+            <p class="font-bold text-indigo-600">${t.total.toFixed(2)} €</p>
+            <p class="text-xs text-gray-500">${t.payment_method === 'cash' ? '💵' : '💳'} ${t.payment_method}</p>
           </div>
         </div>
       `).join('');
@@ -545,22 +569,29 @@ class CocaisseApp {
       const table = document.getElementById('transactionsTable');
       if (!table) return;
 
+      if (transactions.length === 0) {
+        table.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-400">Aucune transaction</td></tr>';
+        return;
+      }
+
       table.innerHTML = transactions.map(t => `
         <tr>
-          <td class="px-4 py-2">${new Date(t.transaction_date).toLocaleString('fr-FR')}</td>
-          <td class="px-4 py-2">${t.receipt_number}</td>
-          <td class="px-4 py-2 text-right font-bold">${t.total.toFixed(2)} €</td>
-          <td class="px-4 py-2">${t.payment_method}</td>
-          <td class="px-4 py-2 text-center">${JSON.parse(t.items || '[]').length}</td>
-          <td class="px-4 py-2 text-center">
-            <button onclick="app.viewReceipt('${t.id}')" class="text-blue-500 hover:text-blue-700">👁️</button>
+          <td class="px-3 py-2">
+            <p class="font-medium text-gray-800">${new Date(t.transaction_date).toLocaleDateString('fr-FR')}</p>
+            <p class="text-xs text-gray-500">${new Date(t.transaction_date).toLocaleTimeString('fr-FR')}</p>
+          </td>
+          <td class="px-3 py-2 hidden sm:table-cell text-gray-600">${t.receipt_number}</td>
+          <td class="px-3 py-2 text-right font-bold text-indigo-600">${t.total.toFixed(2)} €</td>
+          <td class="px-3 py-2 text-center hidden md:table-cell">
+            <span class="badge ${t.payment_method === 'cash' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}">
+              ${t.payment_method === 'cash' ? '💵 Espèces' : '💳 Carte'}
+            </span>
+          </td>
+          <td class="px-3 py-2 text-center">
+            <button onclick="app.viewReceipt('${t.id}')" class="action-btn action-btn-edit">👁️</button>
           </td>
         </tr>
       `).join('');
-
-      if (transactions.length === 0) {
-        table.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">Aucune transaction</td></tr>';
-      }
     } catch (error) {
       console.error('Error loading transactions:', error);
     }
@@ -569,12 +600,9 @@ class CocaisseApp {
   // ===== DIALOGS & MODALS =====
   showSection(section) {
     // Vérifier les permissions
-    const button = Array.from(document.querySelectorAll('.nav-item')).find(
-      btn => btn.getAttribute('onclick')?.includes(`'${section}'`)
-    );
-
-    if (button) {
-      const allowedRoles = (button.getAttribute('data-role') || '').split(',').map(r => r.trim());
+    const navBtn = document.querySelector(`.nav-tab[data-section="${section}"]`);
+    if (navBtn) {
+      const allowedRoles = (navBtn.getAttribute('data-role') || '').split(',').map(r => r.trim());
       const userRole = this.currentUser?.role || 'cashier';
 
       if (!allowedRoles.includes(userRole)) {
@@ -584,31 +612,28 @@ class CocaisseApp {
       }
     }
 
+    // Cacher toutes les sections
     document.querySelectorAll('[id$="-section"]').forEach(s => s.classList.add('hidden'));
-    document.getElementById(section + '-section')?.classList.remove('hidden');
 
-    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    event?.target?.closest('button')?.classList.add('active');
+    // Afficher la section sélectionnée
+    const targetSection = document.getElementById(section + '-section');
+    if (targetSection) {
+      targetSection.classList.remove('hidden');
+    }
 
-    const titles = {
-      dashboard: 'Tableau de bord',
-      checkout: 'Caisse',
-      products: 'Produits',
-      categories: 'Catégories',
-      transactions: 'Historique',
-      reports: 'Rapports',
-      users: 'Utilisateurs',
-      settings: 'Paramètres'
-    };
+    // Mettre à jour les onglets actifs
+    document.querySelectorAll('.nav-tab').forEach(item => item.classList.remove('active'));
+    document.querySelector(`.nav-tab[data-section="${section}"]`)?.classList.add('active');
 
-    document.getElementById('pageTitle').textContent = titles[section] || section;
+    document.querySelectorAll('.mobile-nav-item').forEach(item => item.classList.remove('active'));
+    document.querySelector(`.mobile-nav-item[data-section="${section}"]`)?.classList.add('active');
+
     this.currentSection = section;
 
+    // Actions spécifiques par section
     if (section === 'products') this.filterProducts('');
-    if (section === 'transactions') this.loadTransactions();
-    if (section === 'reports') this.loadReports();
-    if (section === 'users') this.loadUsers();
-    if (section === 'settings') this.loadSettings();
+    if (section === 'history') this.loadTransactions();
+    if (section === 'settings') this.loadUsers();
   }
 
   openProductDialog(productId = null) {
@@ -625,18 +650,25 @@ class CocaisseApp {
         document.getElementById('productTax').value = product.tax_rate || 20;
         document.getElementById('productBarcode').value = product.barcode || '';
         document.getElementById('productStock').value = product.stock || 0;
-        if (product.image_url) {
-          document.getElementById('productImagePreview').src = product.image_url;
-          document.getElementById('productImagePreview').style.display = 'block';
-        }
       }
     } else {
-      document.getElementById('productForm')?.reset();
+      document.getElementById('productName').value = '';
+      document.getElementById('productDescription').value = '';
+      document.getElementById('productPrice').value = '';
+      document.getElementById('productCost').value = '';
+      document.getElementById('productTax').value = '20';
+      document.getElementById('productBarcode').value = '';
+      document.getElementById('productStock').value = '';
     }
 
     const select = document.getElementById('productCategory');
     select.innerHTML = '<option value="">Sélectionner une catégorie</option>' +
       this.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+    if (productId) {
+      const product = this.products.find(p => p.id === productId);
+      if (product) select.value = product.category_id;
+    }
 
     this.openModal('productModal');
   }
@@ -653,7 +685,7 @@ class CocaisseApp {
       tax_rate: parseFloat(document.getElementById('productTax').value),
       barcode: document.getElementById('productBarcode').value,
       stock: parseInt(document.getElementById('productStock').value) || 0,
-      image_url: document.getElementById('productImagePreview')?.src || ''
+      image_url: document.getElementById('productImageData').value || null
     };
 
     try {
@@ -675,7 +707,7 @@ class CocaisseApp {
   }
 
   async deleteProduct(productId) {
-    if (!confirm('Êtes-vous sûr ?')) return;
+    if (!confirm('Supprimer ce produit ?')) return;
 
     try {
       await fetch(`${API_URL}/products/${productId}`, { method: 'DELETE' });
@@ -694,12 +726,12 @@ class CocaisseApp {
       if (category) {
         document.getElementById('categoryName').value = category.name;
         document.getElementById('categoryDescription').value = category.description || '';
-        document.getElementById('categoryColor').value = category.color || '#3b82f6';
-        if (category.image_url) {
-          document.getElementById('categoryImagePreview').src = category.image_url;
-          document.getElementById('categoryImagePreview').style.display = 'block';
-        }
+        document.getElementById('categoryColor').value = category.color || '#6366f1';
       }
+    } else {
+      document.getElementById('categoryName').value = '';
+      document.getElementById('categoryDescription').value = '';
+      document.getElementById('categoryColor').value = '#6366f1';
     }
 
     this.openModal('categoryModal');
@@ -711,8 +743,7 @@ class CocaisseApp {
     const data = {
       name: document.getElementById('categoryName').value,
       description: document.getElementById('categoryDescription').value,
-      color: document.getElementById('categoryColor').value,
-      image_url: document.getElementById('categoryImagePreview')?.src || ''
+      color: document.getElementById('categoryColor').value
     };
 
     try {
@@ -734,7 +765,7 @@ class CocaisseApp {
   }
 
   async deleteCategory(categoryId) {
-    if (!confirm('Êtes-vous sûr ?')) return;
+    if (!confirm('Supprimer cette catégorie ?')) return;
 
     try {
       await fetch(`${API_URL}/categories/${categoryId}`, { method: 'DELETE' });
@@ -747,6 +778,10 @@ class CocaisseApp {
 
   openUserDialog(userId = null) {
     document.getElementById('userId').value = userId || '';
+    document.getElementById('username').value = '';
+    document.getElementById('userEmail').value = '';
+    document.getElementById('userPassword').value = '';
+    document.getElementById('userRole').value = '';
     this.openModal('userModal');
   }
 
@@ -783,33 +818,38 @@ class CocaisseApp {
       const response = await fetch(`${API_URL}/users`);
       const users = await response.json();
 
-      const table = document.getElementById('usersTable');
-      if (!table) return;
-
-      table.innerHTML = users.map(user => `
-        <tr>
-          <td class="px-4 py-2">${user.username}</td>
-          <td class="px-4 py-2">${user.email || '-'}</td>
-          <td class="px-4 py-2">${user.role}</td>
-          <td class="px-4 py-2 text-center">${user.profile}</td>
-          <td class="px-4 py-2 text-center">${user.active ? '✅' : '❌'}</td>
-          <td class="px-4 py-2 text-center">
-            <button onclick="app.openUserDialog('${user.id}')" class="text-blue-500 hover:text-blue-700">✏️</button>
-            <button onclick="app.deleteUser('${user.id}')" class="text-red-500 hover:text-red-700">🗑️</button>
-          </td>
-        </tr>
-      `).join('');
+      const container = document.getElementById('usersTable');
+      if (!container) return;
 
       if (users.length === 0) {
-        table.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">Aucun utilisateur</td></tr>';
+        container.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">Aucun utilisateur</p>';
+        return;
       }
+
+      container.innerHTML = users.map(user => `
+        <div class="user-card">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+              ${user.username.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <p class="font-semibold text-gray-800">${user.username}</p>
+              <p class="text-xs text-gray-500">${user.email || 'Pas d\'email'}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="badge badge-${user.role}">${user.role}</span>
+            <button onclick="app.deleteUser('${user.id}')" class="action-btn action-btn-delete">🗑️</button>
+          </div>
+        </div>
+      `).join('');
     } catch (error) {
       console.error('Error loading users:', error);
     }
   }
 
   async deleteUser(userId) {
-    if (!confirm('Êtes-vous sûr ?')) return;
+    if (!confirm('Supprimer cet utilisateur ?')) return;
 
     try {
       await fetch(`${API_URL}/users/${userId}`, { method: 'DELETE' });
@@ -821,6 +861,9 @@ class CocaisseApp {
   }
 
   openDiscountDialog() {
+    document.getElementById('discountAmount').value = '';
+    document.getElementById('discountPercent').value = '';
+    document.getElementById('discountReason').value = '';
     this.openModal('discountModal');
   }
 
@@ -938,6 +981,7 @@ class CocaisseApp {
       this.showReceipt(result);
       this.cart = [];
       this.currentDiscount = 0;
+      document.getElementById('amountReceived').value = '';
       this.updateCartDisplay();
       await this.loadDashboard();
     } catch (error) {
@@ -950,127 +994,75 @@ class CocaisseApp {
     const companyName = this.settings.company_name || 'Co-Caisse';
     const companyAddress = this.settings.company_address || '';
     const companyPhone = this.settings.company_phone || '';
-    const companyEmail = this.settings.company_email || '';
-    const taxNumber = this.settings.tax_number || '';
 
-    // Parser les items si c'est une string JSON
     const items = typeof transaction.items === 'string' ? JSON.parse(transaction.items) : transaction.items;
-
-    // Formater la date et heure
     const transactionDate = new Date(transaction.transaction_date);
-    const dateStr = transactionDate.toLocaleDateString('fr-FR');
-    const timeStr = transactionDate.toLocaleTimeString('fr-FR');
 
-    // Mapper les méthodes de paiement
     const paymentMethods = {
       'cash': 'ESPÈCES',
-      'card': 'CARTE BANCAIRE',
-      'check': 'CHÈQUE',
-      'transfer': 'VIREMENT'
+      'card': 'CARTE BANCAIRE'
     };
 
-    // Fonction pour centrer le texte sur 40 caractères
-    const centerText = (text, width = 40) => {
+    const centerText = (text, width = 36) => {
       const padding = Math.max(0, width - text.length);
-      const padLeft = Math.floor(padding / 2);
-      const padRight = padding - padLeft;
-      return ' '.repeat(padLeft) + text + ' '.repeat(padRight);
+      return ' '.repeat(Math.floor(padding / 2)) + text;
     };
 
-    // Fonction pour aligner à droite
-    const rightAlign = (text, width) => {
-      return text.toString().padStart(width);
-    };
+    const separator = '════════════════════════════════════';
+    const dash = '────────────────────────────────────';
 
-    // Ligne de séparation
-    const separator = '══════════════════════════════════════';
-    const dash = '──────────────────────────────────────';
+    let receipt = `
+${centerText(companyName.toUpperCase())}
+${companyAddress ? centerText(companyAddress) : ''}
+${companyPhone ? centerText('Tél: ' + companyPhone) : ''}
 
-    // Construire le ticket
-    const ticketLines = [
-      '╔══════════════════════════════════════╗',
-      '║' + centerText(companyName.toUpperCase(), 38) + '║',
-      '║' + centerText('', 38) + '║',
-      '╚══════════════════════════════════════╝',
-      '',
-      companyAddress ? companyAddress : '',
-      companyPhone ? 'Tél: ' + companyPhone : '',
-      companyEmail ? companyEmail : '',
-      taxNumber ? 'SIRET/TVA: ' + taxNumber : '',
-      '',
-      '──────────────────────────────────────',
-      centerText('REÇU DE CAISSE', 40),
-      '──────────────────────────────────────',
-      '',
-      'Date: ' + dateStr,
-      'Heure: ' + timeStr,
-      'Reçu N°: ' + transaction.receipt_number,
-      '',
-      separator,
-      '',
-      'DÉSIGNATION              QTE   PRIX   TOTAL',
-      dash
-    ];
+${dash}
+${centerText('REÇU DE CAISSE')}
+${dash}
 
-    // Ajouter les articles
+Date: ${transactionDate.toLocaleDateString('fr-FR')}
+Heure: ${transactionDate.toLocaleTimeString('fr-FR')}
+N°: ${transaction.receipt_number}
+
+${separator}
+
+`;
+
     items.forEach(item => {
-      const name = item.name.substring(0, 22).padEnd(22);
-      const qty = rightAlign(item.quantity, 4);
-      const price = rightAlign(item.price.toFixed(2), 6);
-      const total = rightAlign(item.total.toFixed(2), 6);
-      ticketLines.push(`${name}${qty} ${price}€ ${total}€`);
+      receipt += `${item.name}\n`;
+      receipt += `  ${item.quantity} x ${item.price.toFixed(2)}€ = ${item.total.toFixed(2)}€\n`;
     });
 
-    ticketLines.push(dash);
-    ticketLines.push('');
+    receipt += `
+${dash}
 
-    // Totaux
-    const subtotalLabel = 'Sous-total HT'.padEnd(22);
-    const subtotalValue = rightAlign(transaction.subtotal.toFixed(2), 13);
-    ticketLines.push(subtotalLabel + subtotalValue + '€');
-
-    const taxLabel = 'Montant TVA (20%)'.padEnd(22);
-    const taxValue = rightAlign(transaction.tax.toFixed(2), 13);
-    ticketLines.push(taxLabel + taxValue + '€');
+Sous-total HT:        ${transaction.subtotal.toFixed(2)}€
+TVA (20%):            ${transaction.tax.toFixed(2)}€`;
 
     if (transaction.discount > 0) {
-      const discountLabel = 'Remise appliquée'.padEnd(22);
-      const discountValue = rightAlign('-' + transaction.discount.toFixed(2), 13);
-      ticketLines.push(discountLabel + discountValue + '€');
+      receipt += `\nRemise:              -${transaction.discount.toFixed(2)}€`;
     }
 
-    ticketLines.push('');
-    ticketLines.push(separator);
+    receipt += `
 
-    const totalLabel = 'MONTANT TOTAL'.padEnd(22);
-    const totalValue = rightAlign(transaction.total.toFixed(2), 13);
-    ticketLines.push(totalLabel + totalValue + '€');
+${separator}
+TOTAL:                ${transaction.total.toFixed(2)}€
+${separator}
 
-    ticketLines.push(separator);
-    ticketLines.push('');
-
-    // Paiement
-    ticketLines.push('Mode de paiement: ' + (paymentMethods[transaction.payment_method] || transaction.payment_method.toUpperCase()));
+Paiement: ${paymentMethods[transaction.payment_method] || transaction.payment_method}`;
 
     if (transaction.change > 0) {
-      const paidLabel = 'Montant reçu'.padEnd(22);
-      const paidValue = rightAlign((transaction.total + transaction.change).toFixed(2), 13);
-      ticketLines.push(paidLabel + paidValue + '€');
-
-      const changeLabel = 'Reste à rendre'.padEnd(22);
-      const changeValue = rightAlign(transaction.change.toFixed(2), 13);
-      ticketLines.push(changeLabel + changeValue + '€');
+      receipt += `\nRendu:                ${transaction.change.toFixed(2)}€`;
     }
 
-    ticketLines.push('');
-    ticketLines.push(separator);
-    ticketLines.push('');
-    ticketLines.push(centerText(this.settings.receipt_footer || 'Merci de votre visite !', 40));
-    ticketLines.push('');
-    ticketLines.push(separator);
+    receipt += `
 
-    const content = ticketLines.filter(line => line !== '').join('\n');
-    receiptContent.textContent = content;
+${dash}
+${centerText(this.settings.receipt_footer || 'Merci de votre visite !')}
+${dash}
+`;
+
+    receiptContent.textContent = receipt;
     this.openModal('receiptModal');
   }
 
@@ -1078,44 +1070,22 @@ class CocaisseApp {
     const content = document.getElementById('receiptContent').textContent;
 
     if (window.electron) {
-      // Pour Electron - impression native
-      window.electron.printTicket(`<pre style="font-family: monospace; font-size: 10pt; white-space: pre-wrap; word-wrap: break-word;">${content}</pre>`);
+      window.electron.printTicket(`<pre style="font-family: monospace; font-size: 10pt;">${content}</pre>`);
     } else {
-      // Pour le navigateur - créer une fenêtre d'impression
-      const printWindow = window.open('', '', 'height=800,width=400');
+      const printWindow = window.open('', '', 'height=600,width=400');
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Reçu de caisse</title>
+          <title>Reçu</title>
           <style>
-            body {
-              font-family: 'Courier New', monospace;
-              margin: 0;
-              padding: 10px;
-              font-size: 11pt;
-            }
-            pre {
-              white-space: pre-wrap;
-              word-wrap: break-word;
-              margin: 0;
-            }
-            @media print {
-              body {
-                margin: 0;
-                padding: 5px;
-              }
-            }
+            body { font-family: 'Courier New', monospace; margin: 10px; font-size: 11pt; }
+            pre { white-space: pre-wrap; margin: 0; }
           </style>
         </head>
         <body>
           <pre>${content}</pre>
-          <script>
-            window.addEventListener('load', function() {
-              window.print();
-              window.close();
-            });
-          </script>
+          <script>window.onload = () => { window.print(); window.close(); }</script>
         </body>
         </html>
       `);
@@ -1133,45 +1103,7 @@ class CocaisseApp {
     }
   }
 
-  // ===== REPORTS =====
-  async loadReports() {
-    try {
-      const response = await fetch(`${API_URL}/reports/sales/daily`);
-      const sales = await response.json();
-
-      const reportDiv = document.getElementById('salesReport');
-      if (reportDiv) {
-        reportDiv.innerHTML = sales.slice(0, 7).map(s => `
-          <div class="p-2 bg-gray-50 rounded flex justify-between">
-            <span>${new Date(s.date).toLocaleDateString('fr-FR')}</span>
-            <span class="font-bold">${s.total_sales.toFixed(2)} € (${s.transaction_count} tx)</span>
-          </div>
-        `).join('');
-      }
-
-      const productsResponse = await fetch(`${API_URL}/reports/products`);
-      const products = await productsResponse.json();
-
-      const topDiv = document.getElementById('topProducts');
-      if (topDiv) {
-        topDiv.innerHTML = products.slice(0, 10).map(p => `
-          <div class="p-2 bg-gray-50 rounded flex justify-between">
-            <span>${p.name}</span>
-            <span class="font-bold">${p.revenue?.toFixed(2) || 0} €</span>
-          </div>
-        `).join('');
-      }
-    } catch (error) {
-      console.error('Error loading reports:', error);
-    }
-  }
-
   // ===== SETTINGS =====
-  async loadSettings() {
-    // Load and display settings
-    console.log('Loading settings...');
-  }
-
   async saveSettings() {
     const settings = {
       company_name: document.getElementById('companyName').value,
@@ -1192,26 +1124,19 @@ class CocaisseApp {
   // ===== DATA EXPORT/IMPORT =====
   async dataExport() {
     try {
-      if (window.electron) {
-        const allData = {
-          categories: this.categories,
-          products: this.products,
-          settings: this.settings,
-          exportedAt: new Date().toISOString()
-        };
+      const allData = {
+        categories: this.categories,
+        products: this.products,
+        settings: this.settings,
+        exportedAt: new Date().toISOString()
+      };
 
+      if (window.electron) {
         const result = await window.electron.exportData(allData);
         if (result.success) {
           alert(`✅ Données exportées: ${result.path}`);
         }
       } else {
-        const allData = {
-          categories: this.categories,
-          products: this.products,
-          settings: this.settings,
-          exportedAt: new Date().toISOString()
-        };
-
         const dataStr = JSON.stringify(allData, null, 2);
         const dataBlob = new Blob([dataStr], { type: 'application/json' });
         const url = URL.createObjectURL(dataBlob);
@@ -1226,75 +1151,40 @@ class CocaisseApp {
     }
   }
 
-  async dataImport() {
-    try {
-      if (window.electron) {
-        const result = await window.electron.importData();
-        if (result.success && result.data) {
-          // Import categories and products
-          const data = result.data;
-          // Update local data
-          alert('✅ Données importées');
-        }
-      }
-    } catch (error) {
-      alert('❌ Erreur: ' + error.message);
-    }
-  }
-
   // ===== UTILITIES =====
   openModal(id) {
-    document.getElementById(id).classList.remove('hidden');
+    document.getElementById(id)?.classList.remove('hidden');
   }
 
   closeModal(id) {
-    document.getElementById(id).classList.add('hidden');
-  }
-
-  toggleSidebar() {
-    document.querySelector('aside').classList.toggle('show');
+    document.getElementById(id)?.classList.add('hidden');
   }
 
   updateClock() {
-    const now = new Date();
-    document.getElementById('currentTime').textContent = now.toLocaleTimeString('fr-FR');
+    const el = document.getElementById('currentTime');
+    if (el) {
+      el.textContent = new Date().toLocaleTimeString('fr-FR');
+    }
   }
 
   logout() {
-    console.log('🔐 Déconnexion...');
     if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
-      console.log('✅ Déconnexion confirmée');
-
-      // Nettoyer les données
       this.currentUser = null;
       this.cart = [];
       this.currentDiscount = 0;
-      this.currentSection = 'dashboard';
-
-      // Vider le localStorage
       localStorage.removeItem('currentUser');
-      localStorage.removeItem('cart');
-      localStorage.removeItem('currentDiscount');
-
-      // Vider les champs de connexion
-      document.getElementById('loginUsername').value = '';
-      document.getElementById('loginPassword').value = '';
-
-      // Afficher l'écran de connexion
       this.showLoginScreen();
-      console.log('🔐 Écran de connexion affiché');
     }
   }
 }
 
-// Make app globally accessible and Initialize app when DOM is ready
+// Initialize app
 let app = null;
 
 function initializeApp() {
   console.log('🚀 Initialisation de l\'application Co-Caisse');
   app = new CocaisseApp();
   window.app = app;
-  console.log('✅ Application initialisée');
 }
 
 if (document.readyState === 'loading') {

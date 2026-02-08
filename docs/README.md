@@ -1,3 +1,59 @@
+# Co-Caisse v2.0 - Interface Ergonomique
+
+## 🎨 Nouvelle Interface
+
+L'application a été entièrement redessinée pour offrir une expérience utilisateur optimale :
+
+### ✨ Caractéristiques principales
+
+- **Interface centralisée** : Toutes les actions sur une seule page sans scroll
+- **Design responsive** : S'adapte parfaitement du mobile au grand écran
+- **Navigation par onglets** : Accès rapide à toutes les sections
+- **Ergonomie tactile** : Boutons et zones cliquables optimisés
+- **Mode plein écran** : Idéal pour les caisses enregistreuses
+
+### 📱 Sections
+
+1. **Caisse (POS)** - Interface principale de vente
+   - Grille de produits responsive
+   - Panier avec gestion des quantités
+   - Calcul automatique TVA et rendu
+   - Paiement espèces/carte
+   
+2. **Tableau de bord** - Vue synthétique des ventes
+3. **Produits** - Gestion des produits et catégories
+4. **Historique** - Consultation et export des transactions
+5. **Paramètres** - Configuration et utilisateurs
+
+## 🚀 Commandes
+
+```bash
+# Installation
+npm install
+
+# Développement
+npm run dev          # Serveur API + Interface
+npm run server       # Serveur API seul
+npm run react-start  # Interface seule
+
+# Build
+npm run build-ui     # Compiler l'interface
+npm run build        # Build complet
+
+# Distribution Electron
+npm run dist         # Créer installateur + portable
+npm run dist:win     # Windows seulement
+npm run dist:portable # Version portable seulement
+```
+
+## 📦 Packages générés
+
+Les packages sont créés dans le dossier `release/` :
+- `Co-Caisse-1.0.0-x64.exe` - Installateur Windows
+- `Co-Caisse-Portable-1.0.0.exe` - Version portable
+
+---
+
 # Co-Caisse - Application de Gestion de Caisse
 
 Application desktop complète et configurable pour la gestion de caisse enregistreuse, développée avec Electron, Express.js, Tailwind CSS et SQLite.

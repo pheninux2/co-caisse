@@ -13,6 +13,10 @@
     "build": "npm run build-ui && npm run electron-build",
     "build-ui": "webpack --mode production",
     "electron-build": "electron-builder",
+    "pack": "electron-builder --dir",
+    "dist": "npm run build-ui && electron-builder",
+    "dist:win": "npm run build-ui && electron-builder --win",
+    "dist:portable": "npm run build-ui && electron-builder --win portable",
     "react-start": "webpack serve --mode development",
     "test": "jest",
     "lint": "eslint src/"
@@ -20,6 +24,7 @@
   "dependencies": {
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
+    "electron-is-dev": "^3.0.1",
     "express": "^4.18.2",
     "idb": "^8.0.0",
     "sqlite3": "^5.1.6",
@@ -48,24 +53,59 @@
   "build": {
     "appId": "com.cocaisse.app",
     "productName": "Co-Caisse",
+    "copyright": "Copyright © 2026 Co-Caisse",
     "files": [
       "dist/**/*",
       "main.js",
       "preload.js",
-      "package.json"
+      "package.json",
+      "src/server/**/*",
+      "src/data/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "src/data",
+        "to": "data",
+        "filter": ["**/*"]
+      }
     ],
     "directories": {
-      "buildResources": "assets"
+      "buildResources": "assets",
+      "output": "release"
     },
     "win": {
       "target": [
-        "nsis",
-        "portable"
-      ]
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Co-Caisse"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.business"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets/icon.png",
+      "category": "Office"
     }
   }
 }

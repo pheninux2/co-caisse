@@ -1,30 +1,54 @@
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+
+let isDev;
+try {
+  isDev = require('electron-is-dev');
+} catch (e) {
+  isDev = !app.isPackaged;
+}
 
 let mainWindow;
 
 function createWindow() {
+  // Obtenir la taille de l'écran pour une meilleure ergonomie
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1200,
-    minHeight: 800,
+    width: Math.min(1400, width),
+    height: Math.min(900, height),
+    minWidth: 800,
+    minHeight: 600,
+    show: false, // Attendre que le contenu soit prêt
+    backgroundColor: '#f3f4f6',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
       sandbox: true
+    },
+    // Amélioration du titre et de l'apparence
+    title: 'Co-Caisse',
+    autoHideMenuBar: true, // Cacher la barre de menu par défaut
+  });
+
+  // Afficher la fenêtre quand elle est prête
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    // Maximiser sur les petits écrans
+    if (width <= 1400 || height <= 900) {
+      mainWindow.maximize();
     }
   });
 
   const startUrl = isDev
     ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, '../dist/index.html')}`;
+    : `file://${path.join(__dirname, 'dist/index.html')}`;
 
   mainWindow.loadURL(startUrl);
 
+  // Ouvrir DevTools en mode développement
   if (isDev) {
     mainWindow.webContents.openDevTools();
   }
@@ -32,9 +56,38 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Gérer les raccourcis clavier
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    // F11 pour basculer en plein écran
+    if (input.key === 'F11') {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    }
+    // Ctrl+Shift+I pour DevTools même en production (pour debug)
+    if (input.control && input.shift && input.key === 'I') {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
 }
 
-app.on('ready', createWindow);
+// Créer un menu minimaliste
+const menuTemplate = [
+  {
+    label: 'Co-Caisse',
+    submenu: [
+      { role: 'reload', label: 'Actualiser' },
+      { role: 'togglefullscreen', label: 'Plein écran' },
+      { type: 'separator' },
+      { role: 'quit', label: 'Quitter' }
+    ]
+  }
+];
+
+app.on('ready', () => {
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -60,6 +113,7 @@ ipcMain.handle('print-ticket', async (event, ticketData) => {
   printWindow.webContents.on('did-finish-load', () => {
     printWindow.webContents.print({}, (success, failureReason) => {
       if (!success) console.log(failureReason);
+      printWindow.close();
     });
   });
 
@@ -98,4 +152,3 @@ ipcMain.handle('import-data', async (event) => {
   }
   return { success: false };
 });
-

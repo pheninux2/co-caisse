@@ -1,0 +1,181 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1e40af;
+  --secondary: #64748b;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #ea580c;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Product Cards */
+.product-card {
+  @apply p-2 bg-white border border-gray-200 rounded-lg cursor-pointer hover:shadow-lg hover:border-blue-400 transition transform hover:scale-105;
+}
+
+.product-card img {
+  @apply w-full h-12 object-cover rounded-md mb-1;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.product-card-name {
+  @apply text-xs font-bold text-gray-800 truncate;
+}
+
+.product-card-price {
+  @apply text-sm font-bold text-blue-600 mt-1;
+}
+
+/* Modal */
+.modal {
+  animation: slideIn 0.3s ease-in-out;
+}
+
+.modal.hidden {
+  display: none !important;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Navigation Items */
+.nav-item {
+  @apply transition-all duration-200;
+}
+
+.nav-item.active {
+  @apply bg-blue-500 text-white;
+}
+
+/* Payment Methods */
+.payment-method.active {
+  @apply border-blue-500 bg-blue-50;
+}
+
+/* Table Rows */
+tbody tr:hover {
+  @apply bg-blue-50 transition;
+}
+
+/* Category Card */
+.category-card {
+  @apply p-4 rounded-lg border border-gray-200 hover:shadow-lg transition cursor-pointer;
+  background-color: rgba(0, 0, 0, 0.01);
+}
+
+.category-card:hover {
+  border-color: var(--primary);
+}
+
+/* Utility Classes */
+.text-truncate {
+  @apply truncate;
+}
+
+.badge {
+  @apply inline-block px-2 py-1 text-xs font-bold rounded-full;
+}
+
+.badge-success {
+  @apply bg-green-100 text-green-800;
+}
+
+.badge-danger {
+  @apply bg-red-100 text-red-800;
+}
+
+.badge-warning {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.badge-info {
+  @apply bg-blue-100 text-blue-800;
+}
+
+/* Loading Animation */
+.spinner {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid var(--primary);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Print Styles */
+@media print {
+  body {
+    background: white;
+  }
+
+  #receiptContent {
+    width: 80mm !important;
+    font-size: 10pt;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  aside {
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+    position: fixed;
+    height: 100vh;
+    z-index: 40;
+  }
+
+  aside.show {
+    transform: translateX(0);
+  }
+}
+

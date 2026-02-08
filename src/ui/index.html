@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Co-Caisse - Gestion de Caisse</title>
+</head>
+<body class="bg-gray-50">
+    <!-- Login Screen -->
+    <div id="loginScreen" class="fixed inset-0 bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md mx-4">
+            <div class="text-center mb-8">
+                <div class="text-5xl font-bold text-blue-600 mb-2">💰</div>
+                <h1 class="text-3xl font-bold text-gray-800">Co-Caisse</h1>
+                <p class="text-gray-500 text-sm mt-1">Gestion intelligente de caisse</p>
+            </div>
+
+            <form id="loginForm" onsubmit="return window.app?.handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Utilisateur</label>
+                    <input type="text" id="loginUsername" placeholder="Nom d'utilisateur" required
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Mot de passe</label>
+                    <input type="password" id="loginPassword" placeholder="Mot de passe" required
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                </div>
+
+                <button type="submit" class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition transform hover:scale-105">
+                    🔓 Se connecter
+                </button>
+
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-xs text-gray-600">
+                    <p class="font-semibold text-blue-700 mb-2">Identifiants de test:</p>
+                    <p>👤 <strong>admin</strong> / 🔑 <strong>admin123</strong></p>
+                    <p>👤 <strong>cashier1</strong> / 🔑 <strong>cashier123</strong></p>
+                </div>
+            </form>
+
+            <div class="text-center text-xs text-gray-500 mt-6">
+                <p>© 2026 Co-Caisse - Tous droits réservés</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="app" class="flex h-screen bg-gray-50 hidden">
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white shadow-lg hidden md:flex flex-col">
+            <div class="p-6 border-b border-blue-500">
+                <h1 class="text-2xl font-bold">Co-Caisse</h1>
+                <p class="text-blue-200 text-sm mt-1">Gestion intelligente</p>
+            </div>
+
+            <nav class="flex-1 overflow-y-auto p-4">
+                <div class="space-y-2">
+                    <button onclick="app.showSection('dashboard')" class="nav-item active w-full text-left px-4 py-3 rounded-lg hover:bg-blue-500 transition" data-role="admin,manager">
+                        <span class="inline-block mr-3">📊</span> Tableau de bord
+                    </button>
+                    <button onclick="app.showSection('checkout')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-blue-500 transition" data-role="admin,manager,cashier">
+                        <span class="inline-block mr-3">🛒</span> Caisse
+                    </button>
+                    <button onclick="app.showSection('products')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-blue-500 transition" data-role="admin">
+                        <span class="inline-block mr-3">📦</span> Produits
+                    </button>
+                    <button onclick="app.showSection('categories')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-blue-500 transition" data-role="admin">
+                        <span class="inline-block mr-3">🏷️</span> Catégories
+                    </button>
+                    <button onclick="app.showSection('transactions')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-blue-500 transition" data-role="admin,manager">
+                        <span class="inline-block mr-3">📜</span> Historique
+                    </button>
+                    <button onclick="app.showSection('reports')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-blue-500 transition" data-role="admin,manager">
+                        <span class="inline-block mr-3">📈</span> Rapports
+                    </button>
+                    <button onclick="app.showSection('users')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-blue-500 transition" data-role="admin">
+                        <span class="inline-block mr-3">👥</span> Utilisateurs
+                    </button>
+                    <button onclick="app.showSection('settings')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-blue-500 transition" data-role="admin">
+                        <span class="inline-block mr-3">⚙️</span> Paramètres
+                    </button>
+                </div>
+            </nav>
+
+            <div class="p-4 border-t border-blue-500">
+                <button onclick="app.dataExport()" class="w-full px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-white mb-2 transition export-btn" data-role="admin">
+                    ⬇️ Exporter
+                </button>
+                <button onclick="app.dataImport()" class="w-full px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-white transition import-btn" data-role="admin">
+                    ⬆️ Importer
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col">
+            <!-- Top Bar -->
+            <div class="bg-white shadow-md p-4 flex justify-between items-center">
+                <div class="flex items-center">
+                    <button class="md:hidden text-2xl mr-4" onclick="app.toggleSidebar()">☰</button>
+                    <h2 id="pageTitle" class="text-2xl font-bold text-gray-800">Tableau de bord</h2>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-right">
+                        <p id="currentUser" class="text-sm font-semibold text-gray-700">Admin</p>
+                        <p id="currentTime" class="text-xs text-gray-500"></p>
+                    </div>
+                    <button onclick="app.logout()" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition">
+                        Déconnecter
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-hidden flex flex-col">
+                <div id="scrollableContent" class="flex-1 overflow-y-auto p-6">
+                <!-- Dashboard Section -->
+                <section id="dashboard-section" class="hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <p class="text-gray-500 text-sm">Ventes du jour</p>
+                            <p id="dailySales" class="text-3xl font-bold text-blue-600">0 €</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <p class="text-gray-500 text-sm">Transactions</p>
+                            <p id="dailyTransactions" class="text-3xl font-bold text-green-600">0</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <p class="text-gray-500 text-sm">TVA collectée</p>
+                            <p id="dailyTax" class="text-3xl font-bold text-orange-600">0 €</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <p class="text-gray-500 text-sm">Remises</p>
+                            <p id="dailyDiscount" class="text-3xl font-bold text-purple-600">0 €</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="text-xl font-bold mb-4">Dernières transactions</h3>
+                            <div id="recentTransactions" class="space-y-2">
+                                <p class="text-gray-500 text-center py-4">Chargement...</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="text-xl font-bold mb-4">Paiements</h3>
+                            <div id="paymentBreakdown" class="space-y-2">
+                                <p class="text-gray-500 text-center py-4">Chargement...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Products Management -->
+                <section id="products-section" class="hidden">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-2xl font-bold">Gestion des produits</h3>
+                            <button onclick="app.openProductDialog()" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition">
+                                ➕ Nouveau produit
+                            </button>
+                        </div>
+
+                        <div class="mb-4">
+                            <input type="text" id="productsSearch" placeholder="🔍 Rechercher produit..."
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left">Produit</th>
+                                        <th class="px-4 py-2 text-left">Catégorie</th>
+                                        <th class="px-4 py-2 text-right">Prix</th>
+                                        <th class="px-4 py-2 text-center">Stock</th>
+                                        <th class="px-4 py-2 text-center">TVA</th>
+                                        <th class="px-4 py-2 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="productsTable" class="divide-y">
+                                    <tr><td colspan="6" class="text-center py-4 text-gray-500">Chargement...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Categories Management -->
+                <section id="categories-section" class="hidden">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-2xl font-bold">Gestion des catégories</h3>
+                            <button onclick="app.openCategoryDialog()" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition">
+                                ➕ Nouvelle catégorie
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="categoriesGrid">
+                            <p class="col-span-full text-center py-4 text-gray-500">Chargement...</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Transactions History -->
+                <section id="transactions-section" class="hidden">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-2xl font-bold mb-6">Historique des transactions</h3>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <input type="date" id="startDate" class="px-4 py-2 border border-gray-300 rounded-lg">
+                            <input type="date" id="endDate" class="px-4 py-2 border border-gray-300 rounded-lg">
+                            <button onclick="app.loadTransactions()" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition">
+                                🔍 Filtrer
+                            </button>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left">Date/Heure</th>
+                                        <th class="px-4 py-2 text-left">Numéro</th>
+                                        <th class="px-4 py-2 text-right">Total</th>
+                                        <th class="px-4 py-2 text-left">Paiement</th>
+                                        <th class="px-4 py-2 text-center">Articles</th>
+                                        <th class="px-4 py-2 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactionsTable" class="divide-y">
+                                    <tr><td colspan="6" class="text-center py-4 text-gray-500">Chargement...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Reports -->
+                <section id="reports-section" class="hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="text-xl font-bold mb-4">Rapport des ventes</h3>
+                            <div id="salesReport" class="space-y-2">
+                                <p class="text-gray-500 text-center py-4">Chargement...</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="text-xl font-bold mb-4">Top produits</h3>
+                            <div id="topProducts" class="space-y-2">
+                                <p class="text-gray-500 text-center py-4">Chargement...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Users Management -->
+                <section id="users-section" class="hidden">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-2xl font-bold">Gestion des utilisateurs</h3>
+                            <button onclick="app.openUserDialog()" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition">
+                                ➕ Nouvel utilisateur
+                            </button>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left">Utilisateur</th>
+                                        <th class="px-4 py-2 text-left">Email</th>
+                                        <th class="px-4 py-2 text-left">Rôle</th>
+                                        <th class="px-4 py-2 text-center">Profil</th>
+                                        <th class="px-4 py-2 text-center">Actif</th>
+                                        <th class="px-4 py-2 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTable" class="divide-y">
+                                    <tr><td colspan="6" class="text-center py-4 text-gray-500">Chargement...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Settings -->
+                <section id="settings-section" class="hidden">
+                    <div class="bg-white p-6 rounded-lg shadow-md max-w-2xl">
+                        <h3 class="text-2xl font-bold mb-6">Paramètres</h3>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-sm font-semibold text-gray-700">Nom de l'entreprise</label>
+                                <input type="text" id="companyName" placeholder="Nom" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="text-sm font-semibold text-gray-700">Adresse</label>
+                                <input type="text" id="companyAddress" placeholder="Adresse" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-sm font-semibold text-gray-700">Téléphone</label>
+                                    <input type="text" id="companyPhone" placeholder="Téléphone" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="text-sm font-semibold text-gray-700">Email</label>
+                                    <input type="email" id="companyEmail" placeholder="Email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="text-sm font-semibold text-gray-700">Numéro SIRET/TVA</label>
+                                <input type="text" id="taxNumber" placeholder="Numéro" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="text-sm font-semibold text-gray-700">TVA par défaut (%)</label>
+                                <input type="number" id="defaultTaxRate" placeholder="20" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="text-sm font-semibold text-gray-700">En-tête du ticket</label>
+                                <textarea id="receiptHeader" rows="3" placeholder="Texte d'en-tête..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                            </div>
+
+                            <div>
+                                <label class="text-sm font-semibold text-gray-700">Pied de page du ticket</label>
+                                <textarea id="receiptFooter" rows="3" placeholder="Texte de pied de page..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                            </div>
+
+                            <button onclick="app.saveSettings()" class="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-bold transition">
+                                💾 Enregistrer
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <!-- Checkout Section - Responsive (Full Height) -->
+            <section id="checkout-section" class="hidden flex-1 flex flex-col overflow-hidden">
+                <!-- Mobile Layout (0-640px) -->
+                <div class="md:hidden flex flex-col h-full gap-2 p-2">
+                    <!-- Products -->
+                    <div class="flex-1 bg-white rounded-lg shadow-md flex flex-col min-h-0">
+                        <h3 class="text-base font-bold p-2 border-b">Produits</h3>
+                        <input type="text" id="searchInput" placeholder="🔍 Rechercher..." class="mx-2 mt-2 px-2 py-1 text-sm border rounded-lg">
+                        <div id="categoriesList" class="flex gap-1 px-2 mt-1 mb-1 overflow-x-auto">
+                            <button class="px-2 py-1 bg-blue-500 text-white rounded text-xs whitespace-nowrap">Tous</button>
+                        </div>
+                        <div id="productsList" class="grid grid-cols-3 gap-1 overflow-y-auto flex-1 p-2">
+                            <p class="col-span-3 text-center text-xs text-gray-500">Chargement...</p>
+                        </div>
+                    </div>
+
+                    <!-- Cart -->
+                    <div class="bg-white rounded-lg shadow-md p-2 flex flex-col max-h-52">
+                        <h3 class="font-bold text-sm mb-1">Panier</h3>
+                        <div id="cartItems" class="text-xs overflow-y-auto flex-1 mb-1">
+                            <p class="text-center text-gray-500">Aucun produit</p>
+                        </div>
+                        <div class="bg-gray-50 p-1 rounded text-xs space-y-0.5 mb-1">
+                            <div class="flex justify-between"><span>Sous-total:</span><span id="subtotal">0,00 €</span></div>
+                            <div class="flex justify-between text-orange-600"><span>TVA:</span><span id="taxAmount">0,00 €</span></div>
+                            <div class="flex justify-between text-purple-600"><span>Remise:</span><span id="discountDisplay">0,00 €</span></div>
+                            <div class="border-t flex justify-between font-bold"><span>Total:</span><span id="totalAmount">0,00 €</span></div>
+                        </div>
+                        <div id="paymentMethods" class="grid grid-cols-2 gap-1 mb-1">
+                            <button class="payment-method py-1 border-2 text-xs rounded" data-method="cash">💵</button>
+                            <button class="payment-method py-1 border-2 text-xs rounded" data-method="card">💳</button>
+                        </div>
+                        <div class="grid grid-cols-4 gap-1">
+                            <button onclick="app.openCalculator()" class="bg-yellow-500 text-white rounded text-xs py-1">🧮</button>
+                            <button onclick="app.openDiscountDialog()" class="bg-purple-500 text-white rounded text-xs py-1">🏷️</button>
+                            <button onclick="app.cart.clear()" class="bg-gray-300 text-xs py-1 rounded">Annuler</button>
+                            <button onclick="app.processPayment()" class="bg-green-500 text-white text-xs py-1 rounded">Payer</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tablet Layout (641px-1024px) -->
+                <div class="hidden md:flex lg:hidden flex-col h-full gap-2 p-2">
+                    <!-- Products -->
+                    <div class="flex-1 bg-white rounded-lg shadow-md flex flex-col">
+                        <h3 class="text-sm font-bold p-2 border-b">Produits</h3>
+                        <input type="text" id="searchInput" placeholder="🔍 Chercher..." class="mx-2 mt-2 px-2 py-1 text-xs border rounded">
+                        <div id="categoriesList" class="flex gap-1 px-2 mt-1 mb-1 overflow-x-auto">
+                            <button class="px-2 py-1 bg-blue-500 text-white rounded text-xs whitespace-nowrap">Tous</button>
+                        </div>
+                        <div id="productsList" class="grid grid-cols-4 gap-1 overflow-y-auto flex-1 p-2">
+                            <p class="col-span-2 text-center text-xs text-gray-500">Chargement...</p>
+                        </div>
+                    </div>
+
+                    <!-- Cart -->
+                    <div class="bg-white rounded-lg shadow-md p-2 flex flex-col max-h-48">
+                        <h3 class="font-bold text-sm mb-1">Panier</h3>
+                        <div id="cartItems" class="text-xs overflow-y-auto flex-1 mb-1 max-h-16">
+                            <p class="text-center text-gray-500">Aucun produit</p>
+                        </div>
+                        <div class="bg-gray-50 p-1 rounded text-xs space-y-0.5 mb-1">
+                            <div class="flex justify-between"><span>Sous-total:</span><span id="subtotal">0,00 €</span></div>
+                            <div class="flex justify-between text-orange-600"><span>TVA:</span><span id="taxAmount">0,00 €</span></div>
+                            <div class="flex justify-between text-purple-600"><span>Remise:</span><span id="discountDisplay">0,00 €</span></div>
+                            <div class="border-t flex justify-between font-bold text-sm"><span>Total:</span><span id="totalAmount">0,00 €</span></div>
+                        </div>
+                        <div id="paymentMethods" class="grid grid-cols-2 gap-1 mb-1">
+                            <button class="payment-method py-1 border-2 text-xs rounded" data-method="cash">💵 Espèces</button>
+                            <button class="payment-method py-1 border-2 text-xs rounded" data-method="card">💳 Carte</button>
+                        </div>
+                        <div class="grid grid-cols-4 gap-1 text-xs">
+                            <button onclick="app.openCalculator()" class="bg-yellow-500 text-white rounded py-1">🧮</button>
+                            <button onclick="app.openDiscountDialog()" class="bg-purple-500 text-white rounded py-1">🏷️</button>
+                            <button onclick="app.cart.clear()" class="bg-gray-300 rounded py-1">Annuler</button>
+                            <button onclick="app.processPayment()" class="bg-green-500 text-white rounded py-1">Payer</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Desktop Layout (1025px+) -->
+                <div class="hidden lg:grid lg:grid-cols-5 gap-3 h-full p-3">
+                    <!-- Products -->
+                    <div class="lg:col-span-3 bg-white rounded-lg shadow-md flex flex-col">
+                        <h3 class="text-lg font-bold p-3 border-b">Produits</h3>
+                        <input type="text" id="searchInput" placeholder="🔍 Rechercher..." class="mx-3 mt-2 px-3 py-2 text-sm border rounded-lg">
+                        <div id="categoriesList" class="flex gap-2 px-3 mt-2 mb-2 overflow-x-auto">
+                            <button class="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm whitespace-nowrap">Tous</button>
+                        </div>
+                        <div id="productsList" class="grid grid-cols-5 gap-2 overflow-y-auto flex-1 p-3">
+                            <p class="col-span-2 text-center text-sm text-gray-500">Chargement...</p>
+                        </div>
+                    </div>
+
+                    <!-- Cart -->
+                    <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-3 flex flex-col">
+                        <h3 class="text-lg font-bold mb-3">Panier</h3>
+                        <div id="cartItems" class="flex-1 overflow-y-auto mb-3 border-b pb-3">
+                            <p class="text-center text-gray-500">Aucun produit</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-lg mb-3 space-y-2 text-sm">
+                            <div class="flex justify-between"><span>Sous-total:</span><span id="subtotal">0,00 €</span></div>
+                            <div class="flex justify-between text-orange-600"><span>TVA (20%):</span><span id="taxAmount">0,00 €</span></div>
+                            <div class="flex justify-between text-purple-600"><span>Remise:</span><span id="discountDisplay">0,00 €</span></div>
+                            <div class="border-t pt-2 flex justify-between font-bold text-base"><span>Total:</span><span id="totalAmount">0,00 €</span></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="text-xs font-semibold mb-2">Paiement</label>
+                            <div id="paymentMethods" class="grid grid-cols-2 gap-2">
+                                <button class="payment-method px-3 py-2 border-2 text-sm rounded-lg" data-method="cash">💵 Espèces</button>
+                                <button class="payment-method px-3 py-2 border-2 text-sm rounded-lg" data-method="card">💳 Carte</button>
+                            </div>
+                        </div>
+                        <div id="changeSection" class="mb-3 text-sm hidden">
+                            <label class="text-xs font-semibold">Montant reçu</label>
+                            <input type="number" id="amountReceived" placeholder="0,00" class="w-full px-3 py-2 border rounded-lg">
+                            <div id="changeDisplay" class="mt-2 p-2 bg-green-50 rounded-lg hidden">
+                                <p class="text-xs text-gray-600">Reste à rendre:</p>
+                                <p id="changeAmount" class="text-lg font-bold text-green-600">0,00 €</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mb-3">
+                            <button onclick="app.openCalculator()" class="px-3 py-2 bg-yellow-500 text-white rounded-lg font-bold text-sm">🧮 Calc</button>
+                            <button onclick="app.openDiscountDialog()" class="px-3 py-2 bg-purple-500 text-white rounded-lg font-bold text-sm">🏷️ Remise</button>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="app.cart.clear()" class="flex-1 px-3 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg font-bold">Annuler</button>
+                            <button onclick="app.processPayment()" class="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg font-bold">Encaisser</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal Dialogs -->
+    <div id="productModal"
+                <input type="hidden" id="productId">
+                <div class="space-y-4">
+                    <input type="text" id="productName" placeholder="Nom du produit" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="text" id="productDescription" placeholder="Description" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                    <select id="productCategory" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Sélectionner une catégorie</option>
+                    </select>
+
+                    <input type="number" id="productPrice" placeholder="Prix" step="0.01" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="number" id="productCost" placeholder="Coût" step="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="number" id="productTax" placeholder="TVA %" step="0.01" value="20" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="text" id="productBarcode" placeholder="Code-barres" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="number" id="productStock" placeholder="Stock" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                    <div>
+                        <label class="text-sm font-semibold">Image</label>
+                        <input type="file" id="productImage" accept="image/*" class="w-full">
+                        <img id="productImagePreview" src="" alt="" class="mt-2 max-h-32" style="display:none;">
+                    </div>
+                </div>
+
+                <div class="flex gap-2 mt-6">
+                    <button type="button" onclick="app.closeModal('productModal')" class="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg">
+                        Annuler
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg">
+                        Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="categoryModal" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 class="text-2xl font-bold mb-4">Catégorie</h2>
+            <form onsubmit="app.saveCategory(event)">
+                <input type="hidden" id="categoryId">
+                <div class="space-y-4">
+                    <input type="text" id="categoryName" placeholder="Nom" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="text" id="categoryDescription" placeholder="Description" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                    <div>
+                        <label class="text-sm font-semibold">Couleur</label>
+                        <input type="color" id="categoryColor" class="w-full h-10 border border-gray-300 rounded-lg cursor-pointer">
+                    </div>
+
+                    <div>
+                        <label class="text-sm font-semibold">Image</label>
+                        <input type="file" id="categoryImage" accept="image/*" class="w-full">
+                        <img id="categoryImagePreview" src="" alt="" class="mt-2 max-h-32" style="display:none;">
+                    </div>
+                </div>
+
+                <div class="flex gap-2 mt-6">
+                    <button type="button" onclick="app.closeModal('categoryModal')" class="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg">
+                        Annuler
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg">
+                        Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="userModal" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 class="text-2xl font-bold mb-4">Utilisateur</h2>
+            <form onsubmit="app.saveUser(event)">
+                <input type="hidden" id="userId">
+                <div class="space-y-4">
+                    <input type="text" id="username" placeholder="Nom d'utilisateur" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="email" id="userEmail" placeholder="Email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="password" id="userPassword" placeholder="Mot de passe" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                    <select id="userRole" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Sélectionner un rôle</option>
+                        <option value="admin">Administrateur</option>
+                        <option value="manager">Manager</option>
+                        <option value="cashier">Caissier</option>
+                    </select>
+                </div>
+
+                <div class="flex gap-2 mt-6">
+                    <button type="button" onclick="app.closeModal('userModal')" class="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg">
+                        Annuler
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg">
+                        Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Calculator Modal -->
+    <div id="calculatorModal" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-sm mx-4">
+            <h2 class="text-2xl font-bold mb-4">Calculatrice</h2>
+            <input type="text" id="calcDisplay" readonly class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-right text-2xl font-bold mb-4">
+
+            <div class="grid grid-cols-4 gap-2">
+                <button onclick="app.calcInput('7')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">7</button>
+                <button onclick="app.calcInput('8')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">8</button>
+                <button onclick="app.calcInput('9')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">9</button>
+                <button onclick="app.calcInput('/')" class="px-4 py-2 bg-orange-400 text-white rounded-lg font-bold">/</button>
+
+                <button onclick="app.calcInput('4')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">4</button>
+                <button onclick="app.calcInput('5')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">5</button>
+                <button onclick="app.calcInput('6')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">6</button>
+                <button onclick="app.calcInput('*')" class="px-4 py-2 bg-orange-400 text-white rounded-lg font-bold">*</button>
+
+                <button onclick="app.calcInput('1')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">1</button>
+                <button onclick="app.calcInput('2')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">2</button>
+                <button onclick="app.calcInput('3')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">3</button>
+                <button onclick="app.calcInput('-')" class="px-4 py-2 bg-orange-400 text-white rounded-lg font-bold">-</button>
+
+                <button onclick="app.calcInput('0')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold col-span-2">0</button>
+                <button onclick="app.calcInput('.')" class="px-4 py-2 bg-gray-200 rounded-lg font-bold">.</button>
+                <button onclick="app.calcInput('+')" class="px-4 py-2 bg-orange-400 text-white rounded-lg font-bold">+</button>
+
+                <button onclick="app.calcClear()" class="px-4 py-2 bg-red-500 text-white rounded-lg font-bold col-span-2">C</button>
+                <button onclick="app.calcEqual()" class="px-4 py-2 bg-green-500 text-white rounded-lg font-bold col-span-2">=</button>
+            </div>
+
+            <button onclick="app.closeModal('calculatorModal')" class="w-full mt-4 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg">
+                Fermer
+            </button>
+        </div>
+    </div>
+
+    <!-- Discount Modal -->
+    <div id="discountModal" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-sm mx-4">
+            <h2 class="text-2xl font-bold mb-4">Appliquer une remise</h2>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-semibold">Montant (€)</label>
+                    <input type="number" id="discountAmount" placeholder="0,00" step="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label class="text-sm font-semibold">Pourcentage (%)</label>
+                    <input type="number" id="discountPercent" placeholder="0" step="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label class="text-sm font-semibold">Raison</label>
+                    <input type="text" id="discountReason" placeholder="Motif de la remise" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <div class="flex gap-2 mt-6">
+                <button onclick="app.closeModal('discountModal')" class="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg">
+                    Annuler
+                </button>
+                <button onclick="app.applyDiscount()" class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg">
+                    Appliquer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div id="receiptModal" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto shadow-2xl">
+            <div id="receiptContent" class="font-mono text-sm whitespace-pre-wrap leading-relaxed"></div>
+
+            <div class="flex gap-2 mt-8 sticky bottom-0 bg-white pt-4">
+                <button onclick="app.printReceipt()" class="flex-1 px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-bold transition">
+                    🖨️ Imprimer
+                </button>
+                <button onclick="app.closeModal('receiptModal')" class="flex-1 px-4 py-3 bg-gray-300 hover:bg-gray-400 rounded-lg font-bold transition">
+                    Fermer
+                </button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+

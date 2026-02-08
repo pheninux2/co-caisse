@@ -254,10 +254,79 @@ tbody tr {
   }
 }
 
-/* Responsive utilities */
+/* ====== RESPONSIVE STYLES ====== */
+
+/* Mobile First - Default small screens */
+@media (max-width: 640px) {
+  /* Smaller product cards on mobile */
+  .product-card {
+    @apply p-1.5;
+  }
+
+  .product-card-name {
+    font-size: 0.65rem;
+  }
+
+  .product-card-price {
+    font-size: 0.75rem;
+  }
+
+  /* Compact cart on mobile */
+  .cart-item {
+    @apply p-1.5 gap-1;
+  }
+
+  /* Smaller stats on mobile */
+  .stat-card {
+    @apply p-2 gap-2;
+  }
+
+  .stat-value {
+    @apply text-base;
+  }
+
+  /* Modal fullscreen on mobile */
+  .modal-content {
+    @apply max-w-full mx-2 max-h-[90vh] overflow-y-auto;
+  }
+
+  /* History filters stacked */
+  #history-section .flex-wrap {
+    @apply flex-col items-stretch;
+  }
+
+  #history-section .ml-auto {
+    @apply ml-0 mt-2;
+  }
+}
+
+/* Tablet */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .product-card {
+    @apply p-2;
+  }
+
+  .modal-content {
+    @apply max-w-md;
+  }
+}
+
+/* Desktop layout fix */
 @media (max-width: 1024px) {
   #pos-section {
     flex-direction: column;
+  }
+
+  /* Cart takes less height on tablet/mobile */
+  #pos-section > div:last-child {
+    max-height: 40vh;
+  }
+}
+
+/* Large screens - full layout */
+@media (min-width: 1025px) {
+  #pos-section > div:last-child {
+    max-height: 100%;
   }
 }
 
@@ -279,3 +348,173 @@ select:focus-visible {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
+
+/* ====== ADDITIONAL UI IMPROVEMENTS ====== */
+
+/* Better touch targets for mobile */
+@media (pointer: coarse) {
+  .quick-action-btn,
+  .payment-method,
+  .category-btn,
+  .action-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .product-card {
+    min-height: 80px;
+  }
+}
+
+/* Held cart badge pulse animation */
+#heldCartsBadge {
+  animation: pulse-badge 2s infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* Better table hover effect */
+tbody tr {
+  @apply hover:bg-indigo-50 transition cursor-pointer;
+}
+
+/* Gradient text for titles */
+.gradient-text {
+  @apply bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent;
+}
+
+/* Glass effect for modals */
+.glass-effect {
+  @apply bg-white/80 backdrop-blur-lg;
+}
+
+/* Better input focus */
+input:focus, select:focus, textarea:focus {
+  @apply ring-2 ring-indigo-500/50 border-indigo-500;
+}
+
+/* Smooth scroll for all scrollable areas */
+.overflow-y-auto, .overflow-x-auto {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ====== TOAST NOTIFICATIONS ====== */
+.toast {
+  @apply flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg pointer-events-auto min-w-[280px] max-w-[400px];
+  animation: toast-in 0.3s ease-out;
+}
+
+.toast-success {
+  @apply bg-gradient-to-r from-green-500 to-emerald-600 text-white;
+}
+
+.toast-error {
+  @apply bg-gradient-to-r from-red-500 to-rose-600 text-white;
+}
+
+.toast-warning {
+  @apply bg-gradient-to-r from-yellow-500 to-amber-600 text-white;
+}
+
+.toast-info {
+  @apply bg-gradient-to-r from-blue-500 to-indigo-600 text-white;
+}
+
+.toast-icon {
+  @apply text-2xl flex-shrink-0;
+}
+
+.toast-content {
+  @apply flex-1 min-w-0;
+}
+
+.toast-title {
+  @apply font-bold text-sm;
+}
+
+.toast-message {
+  @apply text-sm opacity-90;
+}
+
+.toast-close {
+  @apply p-1 rounded-lg hover:bg-white/20 transition flex-shrink-0 cursor-pointer;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.toast-exit {
+  animation: toast-out 0.3s ease-in forwards;
+}
+
+/* ====== CONFIRM DIALOG ====== */
+#confirmDialog .modal-content {
+  animation: confirm-in 0.2s ease-out;
+}
+
+@keyframes confirm-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.confirm-icon-success {
+  @apply bg-green-100 text-green-600;
+}
+
+.confirm-icon-error {
+  @apply bg-red-100 text-red-600;
+}
+
+.confirm-icon-warning {
+  @apply bg-yellow-100 text-yellow-600;
+}
+
+.confirm-icon-info {
+  @apply bg-blue-100 text-blue-600;
+}
+
+.confirm-icon-danger {
+  @apply bg-red-100 text-red-600;
+}
+
+#confirmDialog #confirmOk.btn-danger {
+  @apply bg-red-500 hover:bg-red-600;
+}
+
+#confirmDialog #confirmOk.btn-success {
+  @apply bg-green-500 hover:bg-green-600;
+}
+

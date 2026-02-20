@@ -518,3 +518,76 @@ input:focus, select:focus, textarea:focus {
   @apply bg-green-500 hover:bg-green-600;
 }
 
+/* Order Filter Buttons */
+.order-filter-btn {
+  @apply px-4 py-2 text-sm font-medium rounded-lg bg-white text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition whitespace-nowrap border border-gray-200;
+}
+
+.order-filter-btn.active {
+  @apply bg-indigo-500 text-white border-indigo-500;
+}
+
+/* Order Card */
+.order-card {
+  @apply bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition cursor-pointer;
+}
+
+.order-card-header {
+  @apply flex items-center justify-between mb-3 pb-3 border-b border-gray-100;
+}
+
+.order-status-badge {
+  @apply px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide;
+}
+
+.order-status-draft {
+  @apply bg-gray-100 text-gray-600;
+}
+
+.order-status-validated {
+  @apply bg-blue-100 text-blue-700;
+}
+
+.order-status-in_kitchen {
+  @apply bg-orange-100 text-orange-700;
+}
+
+.order-status-ready {
+  @apply bg-green-100 text-green-700;
+}
+
+.order-status-served {
+  @apply bg-purple-100 text-purple-700;
+}
+
+.order-status-paid {
+  @apply bg-emerald-100 text-emerald-700;
+}
+
+.order-item {
+  @apply flex items-center justify-between py-2 text-sm;
+}
+
+.order-action-btn {
+  @apply px-3 py-1.5 text-xs font-medium rounded-lg transition;
+}
+
+.order-action-btn-primary {
+  @apply bg-indigo-500 hover:bg-indigo-600 text-white;
+}
+
+.order-action-btn-success {
+  @apply bg-green-500 hover:bg-green-600 text-white;
+}
+
+.order-action-btn-warning {
+  @apply bg-orange-500 hover:bg-orange-600 text-white;
+}
+
+.order-action-btn-danger {
+  @apply bg-red-500 hover:bg-red-600 text-white;
+}
+
+.order-action-btn-secondary {
+  @apply bg-gray-200 hover:bg-gray-300 text-gray-700;
+}

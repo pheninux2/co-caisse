@@ -68,6 +68,10 @@
                     <span class="text-lg">🛒</span>
                     <span class="hidden xl:inline">Caisse</span>
                 </button>
+                <button onclick="app.showSection('orders')" class="nav-tab" data-section="orders" data-role="admin,cashier">
+                    <span class="text-lg">📋</span>
+                    <span class="hidden xl:inline">Commandes</span>
+                </button>
                 <button onclick="app.showSection('dashboard')" class="nav-tab" data-section="dashboard" data-role="admin,manager">
                     <span class="text-lg">📊</span>
                     <span class="hidden xl:inline">Tableau</span>
@@ -118,6 +122,9 @@
                 <nav class="p-2">
                     <button onclick="app.showSection('pos'); app.closeMobileMenu();" class="mobile-nav-item" data-section="pos" data-role="admin,manager,cashier">
                         <span>🛒</span> Caisse
+                    </button>
+                    <button onclick="app.showSection('orders'); app.closeMobileMenu();" class="mobile-nav-item" data-section="orders" data-role="admin,cashier">
+                        <span>📋</span> Commandes
                     </button>
                     <button onclick="app.showSection('dashboard'); app.closeMobileMenu();" class="mobile-nav-item" data-section="dashboard" data-role="admin,manager">
                         <span>📊</span> Tableau de bord
@@ -226,7 +233,11 @@
                         </div>
 
                         <!-- Quick Actions -->
-                        <div class="grid grid-cols-4 gap-2 mb-3">
+                        <div class="grid grid-cols-5 gap-2 mb-3">
+                            <button onclick="app.openOrderDialog()" class="quick-action-btn bg-indigo-50 hover:bg-indigo-100 text-indigo-600">
+                                <span>📋</span>
+                                <span class="text-xs">Commande</span>
+                            </button>
                             <button onclick="app.openDiscountDialog()" class="quick-action-btn">
                                 <span>🏷️</span>
                                 <span class="text-xs">Remise</span>
@@ -250,6 +261,53 @@
                         <button onclick="app.processPayment()" class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold rounded-xl transition transform hover:scale-[1.02] shadow-lg flex items-center justify-center gap-2">
                             <span>✅</span> Encaisser
                         </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============ ORDERS SECTION ============ -->
+            <section id="orders-section" class="hidden h-full flex flex-col overflow-hidden bg-gray-50">
+                <!-- Header -->
+                <div class="p-4 bg-white border-b border-gray-200 flex-shrink-0">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                            <span>📋</span> Gestion des commandes
+                        </h2>
+                        <button onclick="app.openOrderDialog()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2">
+                            <span>➕</span> Nouvelle commande
+                        </button>
+                    </div>
+
+                    <!-- Filter Tabs -->
+                    <div class="flex gap-2 overflow-x-auto pb-2">
+                        <button onclick="app.filterOrders('all')" class="order-filter-btn active" data-filter="all">
+                            📦 Toutes
+                        </button>
+                        <button onclick="app.filterOrders('draft')" class="order-filter-btn" data-filter="draft">
+                            🆕 Brouillons
+                        </button>
+                        <button onclick="app.filterOrders('validated')" class="order-filter-btn" data-filter="validated">
+                            ✅ Validées
+                        </button>
+                        <button onclick="app.filterOrders('in_kitchen')" class="order-filter-btn" data-filter="in_kitchen">
+                            🔥 En cuisine
+                        </button>
+                        <button onclick="app.filterOrders('ready')" class="order-filter-btn" data-filter="ready">
+                            ✨ Prêtes
+                        </button>
+                        <button onclick="app.filterOrders('served')" class="order-filter-btn" data-filter="served">
+                            🍽️ Servies
+                        </button>
+                        <button onclick="app.filterOrders('paid')" class="order-filter-btn" data-filter="paid">
+                            💰 Payées
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Orders List -->
+                <div class="flex-1 overflow-y-auto p-4">
+                    <div id="ordersList" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <p class="col-span-full text-gray-400 text-center py-8">Chargement...</p>
                     </div>
                 </div>
             </section>
@@ -653,6 +711,74 @@
                     <span>🖨️</span> Imprimer
                 </button>
                 <button onclick="app.closeModal('receiptModal')" class="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Modal -->
+    <div id="orderModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('orderModal')"></div>
+        <div class="modal-content max-w-lg">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📋 Commande</h2>
+            <form onsubmit="app.saveOrder(event)" class="space-y-3">
+                <input type="hidden" id="orderId">
+
+                <!-- Type de commande -->
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Type de commande</label>
+                    <select id="orderType" required class="modal-input">
+                        <option value="dine_in">🍽️ Sur place</option>
+                        <option value="takeaway">📦 À emporter</option>
+                        <option value="delivery">🚚 Livraison</option>
+                    </select>
+                </div>
+
+                <!-- Numéro de table -->
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Table / Référence</label>
+                    <input type="text" id="orderTableNumber" placeholder="Table 5, À emporter, etc." class="modal-input">
+                </div>
+
+                <!-- Client -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-semibold text-gray-600 mb-1 block">Nom client</label>
+                        <input type="text" id="orderCustomerName" placeholder="Nom" class="modal-input">
+                    </div>
+                    <div>
+                        <label class="text-xs font-semibold text-gray-600 mb-1 block">Téléphone</label>
+                        <input type="tel" id="orderCustomerPhone" placeholder="06..." class="modal-input">
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Notes / Instructions</label>
+                    <textarea id="orderNotes" rows="3" placeholder="Instructions spéciales..." class="modal-input"></textarea>
+                </div>
+
+                <!-- Produits de la commande -->
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Articles (depuis le panier actuel)</label>
+                    <div id="orderItemsPreview" class="bg-gray-50 rounded-lg p-3 max-h-40 overflow-y-auto">
+                        <p class="text-sm text-gray-500">Le panier actuel sera utilisé</p>
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="app.closeModal('orderModal')" class="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition">Annuler</button>
+                    <button type="submit" class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition">💾 Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Order Detail Modal -->
+    <div id="orderDetailModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('orderDetailModal')"></div>
+        <div class="modal-content max-w-2xl">
+            <div id="orderDetailContent">
+                <p class="text-gray-400 text-center py-4">Chargement...</p>
             </div>
         </div>
     </div>

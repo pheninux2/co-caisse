@@ -10,6 +10,7 @@ import categoryRoutes from './routes/categories.js';
 import transactionRoutes from './routes/transactions.js';
 import userRoutes from './routes/users.js';
 import reportRoutes from './routes/reports.js';
+import orderRoutes from './routes/orders.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,6 +31,7 @@ app.locals.db = db;
 app.use('/api/products', authMiddleware, productRoutes);
 app.use('/api/categories', authMiddleware, categoryRoutes);
 app.use('/api/transactions', authMiddleware, transactionRoutes);
+app.use('/api/orders', authMiddleware, orderRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/reports', authMiddleware, reportRoutes);
 

@@ -89,8 +89,39 @@ class Database {
             change REAL DEFAULT 0,
             notes TEXT,
             receipt_number TEXT,
+            order_id TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(user_id) REFERENCES users(id)
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            FOREIGN KEY(order_id) REFERENCES orders(id)
+          )
+        `);
+
+        // Orders table
+        this.db.run(`
+          CREATE TABLE IF NOT EXISTS orders (
+            id TEXT PRIMARY KEY,
+            order_number TEXT UNIQUE NOT NULL,
+            table_number TEXT,
+            order_type TEXT DEFAULT 'dine_in',
+            status TEXT DEFAULT 'draft',
+            items TEXT NOT NULL,
+            subtotal REAL NOT NULL,
+            tax REAL DEFAULT 0,
+            discount REAL DEFAULT 0,
+            total REAL NOT NULL,
+            customer_name TEXT,
+            customer_phone TEXT,
+            notes TEXT,
+            created_by TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            validated_at DATETIME,
+            kitchen_at DATETIME,
+            ready_at DATETIME,
+            served_at DATETIME,
+            paid_at DATETIME,
+            transaction_id TEXT,
+            FOREIGN KEY(created_by) REFERENCES users(id),
+            FOREIGN KEY(transaction_id) REFERENCES transactions(id)
           )
         `);
 

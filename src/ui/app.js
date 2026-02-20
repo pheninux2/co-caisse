@@ -816,10 +816,64 @@ class CocaisseApp {
         if (cashierStatsEl) cashierStatsEl.classList.add('hidden');
       }
 
+      // Charger les statistiques par période
+      await this.loadPeriodStats();
+
       // Charger la liste des caissiers pour le filtre
       await this.loadCashiersFilter();
     } catch (error) {
       console.error('Error loading transactions:', error);
+    }
+  }
+
+  // Charger les statistiques par période
+  async loadPeriodStats() {
+    try {
+      const today = new Date();
+
+      // Aujourd'hui
+      const todayStr = today.toISOString().split('T')[0];
+
+      // Cette semaine (lundi au dimanche)
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay() + 1);
+      const weekStartStr = weekStart.toISOString().split('T')[0];
+
+      // Ce mois
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const monthStartStr = monthStart.toISOString().split('T')[0];
+
+      // Cette année
+      const yearStart = new Date(today.getFullYear(), 0, 1);
+      const yearStartStr = yearStart.toISOString().split('T')[0];
+
+      // Requêtes parallèles
+      const [todayRes, weekRes, monthRes, yearRes] = await Promise.all([
+        fetch(`${API_URL}/transactions/summary/period?start=${todayStr}&end=${todayStr}`),
+        fetch(`${API_URL}/transactions/summary/period?start=${weekStartStr}&end=${todayStr}`),
+        fetch(`${API_URL}/transactions/summary/period?start=${monthStartStr}&end=${todayStr}`),
+        fetch(`${API_URL}/transactions/summary/period?start=${yearStartStr}&end=${todayStr}`)
+      ]);
+
+      const [todayData, weekData, monthData, yearData] = await Promise.all([
+        todayRes.json(),
+        weekRes.json(),
+        monthRes.json(),
+        yearRes.json()
+      ]);
+
+      // Mettre à jour l'affichage
+      const statToday = document.getElementById('statToday');
+      const statWeek = document.getElementById('statWeek');
+      const statMonth = document.getElementById('statMonth');
+      const statYear = document.getElementById('statYear');
+
+      if (statToday) statToday.textContent = (todayData.total || 0).toFixed(2) + ' €';
+      if (statWeek) statWeek.textContent = (weekData.total || 0).toFixed(2) + ' €';
+      if (statMonth) statMonth.textContent = (monthData.total || 0).toFixed(2) + ' €';
+      if (statYear) statYear.textContent = (yearData.total || 0).toFixed(2) + ' €';
+    } catch (error) {
+      console.error('Error loading period stats:', error);
     }
   }
 
@@ -1196,6 +1250,7 @@ class CocaisseApp {
     this.currentSection = section;
 
     // Actions spécifiques par section
+    if (section === 'dashboard') this.loadDashboard();
     if (section === 'products') this.filterProducts('');
     if (section === 'history') this.loadTransactions();
     if (section === 'settings') this.loadUsers();

@@ -658,8 +658,67 @@ class CocaisseApp {
       document.getElementById('dailyDiscount').textContent = (summary.total_discount || 0).toFixed(2) + ' €';
 
       await this.loadRecentTransactions();
+      await this.loadPaymentMethodsChart();
     } catch (error) {
       console.error('Error loading dashboard:', error);
+    }
+  }
+
+  // Charger la répartition des moyens de paiement pour le dashboard
+  async loadPaymentMethodsChart() {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const response = await fetch(`${API_URL}/reports/payments?start_date=${today}&end_date=${today}`);
+      const paymentData = await response.json();
+
+      const container = document.getElementById('paymentMethodsChart');
+      if (!container) return;
+
+      if (paymentData.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">Aucune donnée</p>';
+        return;
+      }
+
+      const total = paymentData.reduce((sum, p) => sum + (p.total || 0), 0);
+
+      const paymentIcons = {
+        'cash': '💵',
+        'card': '💳'
+      };
+
+      const paymentLabels = {
+        'cash': 'Espèces',
+        'card': 'Carte'
+      };
+
+      container.innerHTML = `
+        <div class="space-y-3">
+          ${paymentData.map(payment => {
+            const percentage = total > 0 ? (payment.total / total * 100) : 0;
+            return `
+              <div class="space-y-1">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="flex items-center gap-2">
+                    <span class="text-lg">${paymentIcons[payment.payment_method] || '💰'}</span>
+                    <span class="font-medium text-gray-700">${paymentLabels[payment.payment_method] || payment.payment_method}</span>
+                  </span>
+                  <span class="font-bold text-indigo-600">${(payment.total || 0).toFixed(2)} €</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div class="h-full rounded-full transition-all duration-500 ${payment.payment_method === 'cash' ? 'bg-gradient-to-r from-green-400 to-green-600' : 'bg-gradient-to-r from-blue-400 to-blue-600'}"
+                       style="width: ${percentage}%"></div>
+                </div>
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                  <span>${payment.count || 0} transaction(s)</span>
+                  <span>${percentage.toFixed(1)}%</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } catch (error) {
+      console.error('Error loading payment methods chart:', error);
     }
   }
 
@@ -714,6 +773,9 @@ class CocaisseApp {
 
       if (transactions.length === 0) {
         table.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-400">Aucune transaction</td></tr>';
+        // Réinitialiser les stats de caissier
+        const cashierStatsEl = document.getElementById('cashierDailyStats');
+        if (cashierStatsEl) cashierStatsEl.classList.add('hidden');
         return;
       }
 
@@ -746,13 +808,130 @@ class CocaisseApp {
         </tr>
       `).join('');
 
-      // Charger les statistiques par période
-      await this.loadPeriodStats();
+      // Calculer et afficher les statistiques du caissier si filtré
+      if (cashierId) {
+        await this.loadCashierDailyStats(cashierId, startDate, endDate, transactions);
+      } else {
+        const cashierStatsEl = document.getElementById('cashierDailyStats');
+        if (cashierStatsEl) cashierStatsEl.classList.add('hidden');
+      }
 
       // Charger la liste des caissiers pour le filtre
       await this.loadCashiersFilter();
     } catch (error) {
       console.error('Error loading transactions:', error);
+    }
+  }
+
+  // Charger les statistiques journalières d'un caissier
+  async loadCashierDailyStats(cashierId, startDate, endDate, transactions) {
+    const cashierStatsEl = document.getElementById('cashierDailyStats');
+    if (!cashierStatsEl) return;
+
+    // Calculer les stats à partir des transactions déjà chargées
+    const totalSales = transactions.reduce((sum, t) => sum + (t.total || 0), 0);
+    const totalTransactions = transactions.length;
+    const totalTax = transactions.reduce((sum, t) => sum + (t.tax || 0), 0);
+    const totalDiscount = transactions.reduce((sum, t) => sum + (t.discount || 0), 0);
+
+    // Récupérer le nom du caissier
+    const cashierName = transactions.length > 0 ? transactions[0].cashier_name : 'Caissier';
+
+    // Grouper par jour
+    const dailyStats = {};
+    transactions.forEach(t => {
+      const day = new Date(t.transaction_date).toLocaleDateString('fr-FR');
+      if (!dailyStats[day]) {
+        dailyStats[day] = {
+          date: day,
+          count: 0,
+          total: 0,
+          tax: 0,
+          discount: 0
+        };
+      }
+      dailyStats[day].count++;
+      dailyStats[day].total += t.total || 0;
+      dailyStats[day].tax += t.tax || 0;
+      dailyStats[day].discount += t.discount || 0;
+    });
+
+    const sortedDays = Object.values(dailyStats).sort((a, b) => {
+      const dateA = a.date.split('/').reverse().join('-');
+      const dateB = b.date.split('/').reverse().join('-');
+      return dateB.localeCompare(dateA);
+    });
+
+    cashierStatsEl.classList.remove('hidden');
+    cashierStatsEl.innerHTML = `
+      <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl shadow-lg p-6 mb-4">
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+          <span>👤</span>
+          <span>Statistiques de ${cashierName}</span>
+        </h3>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white/10 backdrop-blur rounded-lg p-3">
+            <p class="text-xs opacity-80 mb-1">Ventes totales</p>
+            <p class="text-2xl font-bold">${totalSales.toFixed(2)} €</p>
+          </div>
+          <div class="bg-white/10 backdrop-blur rounded-lg p-3">
+            <p class="text-xs opacity-80 mb-1">Transactions</p>
+            <p class="text-2xl font-bold">${totalTransactions}</p>
+          </div>
+          <div class="bg-white/10 backdrop-blur rounded-lg p-3">
+            <p class="text-xs opacity-80 mb-1">TVA collectée</p>
+            <p class="text-2xl font-bold">${totalTax.toFixed(2)} €</p>
+          </div>
+          <div class="bg-white/10 backdrop-blur rounded-lg p-3">
+            <p class="text-xs opacity-80 mb-1">Remises</p>
+            <p class="text-2xl font-bold">${totalDiscount.toFixed(2)} €</p>
+          </div>
+        </div>
+
+        ${sortedDays.length > 0 ? `
+          <div class="mt-6">
+            <h4 class="text-sm font-semibold mb-3 opacity-90">📊 Détail par jour</h4>
+            <div class="space-y-2 max-h-60 overflow-y-auto">
+              ${sortedDays.map(day => `
+                <div class="bg-white/10 backdrop-blur rounded-lg p-3 flex items-center justify-between">
+                  <div>
+                    <p class="font-semibold">${day.date}</p>
+                    <p class="text-xs opacity-80">${day.count} transaction(s)</p>
+                  </div>
+                  <div class="text-right">
+                    <p class="font-bold text-lg">${day.total.toFixed(2)} €</p>
+                    <p class="text-xs opacity-80">TVA: ${day.tax.toFixed(2)} € | Remise: ${day.discount.toFixed(2)} €</p>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  // Charger la liste des caissiers pour le filtre
+  async loadCashiersFilter() {
+    try {
+      const filterSelect = document.getElementById('filterCashier');
+      if (!filterSelect) return;
+
+      const response = await fetch(`${API_URL}/users`);
+      const users = await response.json();
+
+      const currentValue = filterSelect.value;
+
+      filterSelect.innerHTML = `
+        <option value="">Tous les caissiers</option>
+        ${users.map(user => `
+          <option value="${user.id}" ${currentValue === user.id ? 'selected' : ''}>
+            ${user.username} (${user.role})
+          </option>
+        `).join('')}
+      `;
+    } catch (error) {
+      console.error('Error loading cashiers filter:', error);
     }
   }
 

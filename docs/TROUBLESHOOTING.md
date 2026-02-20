@@ -47,10 +47,11 @@ npm install
 
 **Cause:** Un autre processus utilise le port
 
-**Windows:**
+**Windows (PowerShell/CMD):**
 ```powershell
 # Trouver le processus
 netstat -ano | findstr :5000
+netstat -ano | findstr :3000
 
 # Arrêter le processus (remplacer PID par le numéro)
 taskkill /PID <PID> /F
@@ -58,13 +59,39 @@ taskkill /PID <PID> /F
 # Ou changer le port dans package.json
 ```
 
+**Ubuntu/WSL (Linux sous Windows):**
+```bash
+# Trouver le processus avec grep au lieu de findstr
+netstat -ano | grep :5000
+netstat -ano | grep :3000
+
+# Ou utiliser ss (recommandé)
+ss -tulpn | grep :5000
+ss -tulpn | grep :3000
+
+# Arrêter le processus
+kill -9 <PID>
+
+# Ou trouver et arrêter directement
+sudo lsof -ti:5000 | xargs kill -9
+sudo lsof -ti:3000 | xargs kill -9
+
+# Ou arrêter tous les processus node
+pkill -9 node
+```
+
 **Mac/Linux:**
 ```bash
 # Trouver et arrêter
 lsof -i :5000 | grep LISTEN | awk '{print $2}' | xargs kill -9
+lsof -i :3000 | grep LISTEN | awk '{print $2}' | xargs kill -9
 
 # Ou
 kill -9 $(lsof -t -i:5000)
+kill -9 $(lsof -t -i:3000)
+
+# Ou arrêter tous les processus node
+pkill -9 node
 ```
 
 ---

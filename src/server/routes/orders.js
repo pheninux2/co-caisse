@@ -40,7 +40,7 @@ router.post('/', async (req, res) => {
         id, order_number, table_number, order_type, status, items,
         subtotal, tax, discount, total, customer_name, customer_phone,
         notes, created_by, created_at
-      ) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      ) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
       [
         id, order_number, table_number, order_type, JSON.stringify(items),
         subtotal, tax || 0, discount || 0, total,
@@ -230,7 +230,7 @@ router.post('/:id/validate', async (req, res) => {
     }
 
     await db.run(
-      `UPDATE orders SET status = 'validated', validated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE orders SET status = 'validated', validated_at = datetime('now', 'localtime') WHERE id = ?`,
       [req.params.id]
     );
 
@@ -256,7 +256,7 @@ router.post('/:id/send-to-kitchen', async (req, res) => {
     }
 
     await db.run(
-      `UPDATE orders SET status = 'in_kitchen', kitchen_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE orders SET status = 'in_kitchen', kitchen_at = datetime('now', 'localtime') WHERE id = ?`,
       [req.params.id]
     );
 
@@ -282,7 +282,7 @@ router.post('/:id/mark-ready', async (req, res) => {
     }
 
     await db.run(
-      `UPDATE orders SET status = 'ready', ready_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE orders SET status = 'ready', ready_at = datetime('now', 'localtime') WHERE id = ?`,
       [req.params.id]
     );
 
@@ -308,7 +308,7 @@ router.post('/:id/mark-served', async (req, res) => {
     }
 
     await db.run(
-      `UPDATE orders SET status = 'served', served_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE orders SET status = 'served', served_at = datetime('now', 'localtime') WHERE id = ?`,
       [req.params.id]
     );
 
@@ -359,7 +359,7 @@ router.post('/:id/pay', async (req, res) => {
     await db.run(
       `UPDATE orders SET
         status = 'paid',
-        paid_at = CURRENT_TIMESTAMP,
+        paid_at = datetime('now', 'localtime'),
         transaction_id = ?
       WHERE id = ?`,
       [transactionId, req.params.id]
@@ -396,6 +396,186 @@ router.get('/stats/summary', async (req, res) => {
     `, [today]);
 
     res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtenir les commandes surveillées (pour alertes temps réel côté client)
+router.get('/alerts/pending', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+
+    const settings = await db.get('SELECT * FROM settings LIMIT 1');
+    if (!settings || !settings.alert_enabled) {
+      return res.json([]);
+    }
+
+    const currentUser = await db.get('SELECT id, role, username FROM users WHERE id = ?', [req.userId]);
+    const userRole = currentUser?.role || req.role || 'cashier';
+
+    // Récupérer les commandes selon le rôle
+    let query = `
+      SELECT o.*, COALESCE(u.username, 'Inconnu') as cashier_name
+      FROM orders o
+      LEFT JOIN users u ON o.created_by = u.id
+      WHERE o.status IN ('draft', 'validated', 'in_kitchen', 'ready', 'served')
+    `;
+    const queryParams = [];
+
+    if (userRole === 'cashier') {
+      query += ' AND o.created_by = ?';
+      queryParams.push(req.userId);
+    }
+    query += ' ORDER BY o.created_at ASC';
+
+    const orders = await db.all(query, queryParams);
+
+    // Enrichir chaque commande avec status_since et alert_threshold_minutes
+    // Le client calcule lui-même si c'est en alerte (permet détection temps réel)
+    const enriched = orders.map(order => {
+      let statusDateStr, alertMinutes, statusLabel;
+
+      switch(order.status) {
+        case 'draft':
+          statusDateStr = order.created_at;
+          alertMinutes = settings.alert_draft_minutes || 15;
+          statusLabel = 'Brouillon';
+          break;
+        case 'validated':
+          statusDateStr = order.validated_at || order.created_at;
+          alertMinutes = settings.alert_validated_minutes || 10;
+          statusLabel = 'Validée';
+          break;
+        case 'in_kitchen':
+          statusDateStr = order.kitchen_at || order.validated_at || order.created_at;
+          alertMinutes = settings.alert_kitchen_minutes || 20;
+          statusLabel = 'En cuisine';
+          break;
+        case 'ready':
+          statusDateStr = order.ready_at || order.kitchen_at || order.created_at;
+          alertMinutes = settings.alert_ready_minutes || 5;
+          statusLabel = 'Prête';
+          break;
+        case 'served':
+          statusDateStr = order.served_at || order.ready_at || order.created_at;
+          alertMinutes = settings.alert_served_minutes || 30;
+          statusLabel = 'Servie';
+          break;
+        default:
+          return null;
+      }
+
+      // Parsing robuste SQLite "YYYY-MM-DD HH:MM:SS" → ISO sans Z (heure locale)
+      const isoDate = statusDateStr.replace(' ', 'T');
+
+      return {
+        id: order.id,
+        order_number: order.order_number,
+        status: order.status,
+        status_label: statusLabel,
+        status_since: isoDate,                    // ← timestamp de début du statut
+        alert_threshold_minutes: alertMinutes,     // ← seuil pour ce statut
+        table_number: order.table_number,
+        order_type: order.order_type,
+        cashier_name: order.cashier_name,
+        total: order.total,
+        items: order.items,
+        notes: order.notes,
+        created_at: order.created_at
+      };
+    }).filter(Boolean);
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('[ALERTS] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Statistiques détaillées par statut avec temps moyen
+router.get('/stats/detailed', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { start_date, end_date } = req.query;
+
+    let dateFilter = '';
+    const params = [];
+
+    if (start_date) {
+      dateFilter += ' AND DATE(o.created_at) >= ?';
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      dateFilter += ' AND DATE(o.created_at) <= ?';
+      params.push(end_date);
+    }
+
+    // Statistiques par statut
+    const statusStats = await db.all(`
+      SELECT 
+        status,
+        COUNT(*) as count,
+        SUM(total) as total_amount,
+        AVG(total) as avg_amount,
+        MIN(created_at) as oldest,
+        MAX(created_at) as newest
+      FROM orders o
+      WHERE 1=1 ${dateFilter}
+      GROUP BY status
+    `, params);
+
+    // Temps moyen par statut
+    const timeStats = await db.all(`
+      SELECT
+        'draft_to_validated' as transition,
+        AVG((julianday(validated_at) - julianday(created_at)) * 24 * 60) as avg_minutes,
+        COUNT(*) as count
+      FROM orders
+      WHERE validated_at IS NOT NULL ${dateFilter}
+      
+      UNION ALL
+      
+      SELECT
+        'validated_to_kitchen' as transition,
+        AVG((julianday(kitchen_at) - julianday(validated_at)) * 24 * 60) as avg_minutes,
+        COUNT(*) as count
+      FROM orders
+      WHERE kitchen_at IS NOT NULL ${dateFilter}
+      
+      UNION ALL
+      
+      SELECT
+        'kitchen_to_ready' as transition,
+        AVG((julianday(ready_at) - julianday(kitchen_at)) * 24 * 60) as avg_minutes,
+        COUNT(*) as count
+      FROM orders
+      WHERE ready_at IS NOT NULL ${dateFilter}
+      
+      UNION ALL
+      
+      SELECT
+        'ready_to_served' as transition,
+        AVG((julianday(served_at) - julianday(ready_at)) * 24 * 60) as avg_minutes,
+        COUNT(*) as count
+      FROM orders
+      WHERE served_at IS NOT NULL ${dateFilter}
+      
+      UNION ALL
+      
+      SELECT
+        'served_to_paid' as transition,
+        AVG((julianday(paid_at) - julianday(served_at)) * 24 * 60) as avg_minutes,
+        COUNT(*) as count
+      FROM orders
+      WHERE paid_at IS NOT NULL ${dateFilter}
+    `, params);
+
+    res.json({
+      status_stats: statusStats,
+      time_stats: timeStats
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -65,7 +65,24 @@ router.get('/', roleCheck(['admin']), async (req, res) => {
   }
 });
 
-// Get user by ID
+// Get current user profile (accessible à tous les rôles)
+router.get('/me', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const user = await db.get(
+      'SELECT id, username, email, role, profile, active FROM users WHERE id = ? AND active = 1',
+      [req.userId]
+    );
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get user by ID (admin only)
 router.get('/:id', roleCheck(['admin']), async (req, res) => {
   try {
     const db = req.app.locals.db;

@@ -153,6 +153,13 @@ class Database {
             receipt_footer TEXT,
             printer_name TEXT,
             cashregister_port TEXT,
+            alert_draft_minutes INTEGER DEFAULT 15,
+            alert_validated_minutes INTEGER DEFAULT 10,
+            alert_kitchen_minutes INTEGER DEFAULT 20,
+            alert_ready_minutes INTEGER DEFAULT 5,
+            alert_served_minutes INTEGER DEFAULT 30,
+            alert_enabled BOOLEAN DEFAULT 1,
+            alert_sound_enabled BOOLEAN DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
           )

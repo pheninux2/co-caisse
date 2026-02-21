@@ -153,6 +153,14 @@ async function seedDatabase() {
       default_tax_rate REAL DEFAULT 20,
       receipt_header TEXT,
       receipt_footer TEXT,
+      alert_draft_minutes INTEGER DEFAULT 15,
+      alert_validated_minutes INTEGER DEFAULT 10,
+      alert_kitchen_minutes INTEGER DEFAULT 20,
+      alert_ready_minutes INTEGER DEFAULT 5,
+      alert_served_minutes INTEGER DEFAULT 30,
+      alert_enabled BOOLEAN DEFAULT 1,
+      alert_sound_enabled BOOLEAN DEFAULT 1,
+      alert_remind_after_dismiss INTEGER DEFAULT 10,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
@@ -241,11 +249,29 @@ async function seedDatabase() {
     // Insert Settings
     console.log('Inserting settings...');
     await runQuery(
-      `INSERT INTO settings (id, company_name, company_address, company_phone, company_email, tax_number, currency, default_tax_rate, receipt_header, receipt_footer)
-       VALUES (?, ?, ?, ?, ?, ?, 'EUR', 20, ?, ?)`,
-      [uuidv4(), 'Boulangerie Martin', '12, rue de la Paix, 75000 PARIS', '01 23 45 67 89', 'contact@boulangerie-martin.fr', 'FR12345678901',
-       '============================\n  BOULANGERIE MARTIN\n  12, rue de la Paix\n  75000 PARIS\nTel: 01 23 45 67 89\n============================',
-       'Merci de votre visite !\n============================\nSIRET: 123456789']
+      `INSERT INTO settings (
+        id, company_name, company_address, company_phone, company_email, tax_number, 
+        currency, default_tax_rate, receipt_header, receipt_footer,
+        alert_draft_minutes, alert_validated_minutes, alert_kitchen_minutes, 
+        alert_ready_minutes, alert_served_minutes, alert_enabled, alert_sound_enabled,
+        alert_remind_after_dismiss
+      ) VALUES (?, ?, ?, ?, ?, ?, 'EUR', 20, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)`,
+      [
+        uuidv4(),
+        'Boulangerie Martin',
+        '12, rue de la Paix, 75000 PARIS',
+        '01 23 45 67 89',
+        'contact@boulangerie-martin.fr',
+        'FR12345678901',
+        '============================\n  BOULANGERIE MARTIN\n  12, rue de la Paix\n  75000 PARIS\nTel: 01 23 45 67 89\n============================',
+        'Merci de votre visite !\n============================\nSIRET: 123456789',
+        15,  // alert_draft_minutes
+        10,  // alert_validated_minutes
+        20,  // alert_kitchen_minutes
+        5,   // alert_ready_minutes
+        30,  // alert_served_minutes
+        10   // alert_remind_after_dismiss (relance après 10 min)
+      ]
     );
     console.log('✅ Settings inserted\n');
 

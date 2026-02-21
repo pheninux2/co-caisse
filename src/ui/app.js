@@ -17,6 +17,14 @@ class CocaisseApp {
     this.heldCarts = [];
     this.orders = [];
     this.currentOrderFilter = 'all';
+    this.alerts = [];
+    this.alertsRaw = [];
+    this.alertPollingInterval = null;
+    this.alertDisplayInterval = null;
+    this.lastAlertSound = 0;
+    this.notifiedAlerts = new Set();
+    this.notifiedLevels = new Map(); // garde le niveau déjà notifié par id
+    this.dismissedAlerts = new Map();
 
     this.init();
   }
@@ -52,12 +60,45 @@ class CocaisseApp {
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
       try {
-        this.currentUser = JSON.parse(savedUser);
-        console.log('👤 Utilisateur restauré:', this.currentUser.username);
-        this.showMainApp();
+        const user = JSON.parse(savedUser);
+
+        // Vérifier que l'utilisateur existe toujours en base via /me (accessible à tous les rôles)
+        const checkRes = await fetch(`${API_URL}/users/me`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'user-id': user.id,
+            'user-role': user.role
+          }
+        });
+
+        if (checkRes.ok) {
+          // Mettre à jour les infos depuis la base (au cas où le rôle a changé)
+          const freshUser = await checkRes.json();
+          this.currentUser = { ...user, ...freshUser };
+          localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+          console.log('👤 Utilisateur restauré:', this.currentUser.username);
+          this.showMainApp();
+        } else if (checkRes.status === 404) {
+          // Utilisateur supprimé de la base (ex: après seed) → forcer reconnexion
+          console.log('⚠️ Utilisateur introuvable en base, reconnexion requise');
+          localStorage.removeItem('currentUser');
+          this.showLoginScreen();
+        } else {
+          // Autre erreur (réseau, serveur) → garder la session locale pour ne pas déconnecter
+          console.warn('⚠️ Impossible de vérifier la session (erreur serveur), session locale conservée');
+          this.currentUser = user;
+          this.showMainApp();
+        }
       } catch (e) {
-        console.log('❌ Erreur lors de la restauration de l\'utilisateur');
-        this.showLoginScreen();
+        // Erreur réseau (serveur pas démarré) → garder la session locale
+        console.warn('⚠️ Serveur inaccessible, session locale conservée:', e.message);
+        try {
+          this.currentUser = JSON.parse(savedUser);
+          this.showMainApp();
+        } catch {
+          localStorage.removeItem('currentUser');
+          this.showLoginScreen();
+        }
       }
     } else {
       console.log('🔐 Aucun utilisateur connecté');
@@ -97,6 +138,9 @@ class CocaisseApp {
 
     // Afficher la caisse par défaut
     this.showSection('pos');
+
+    // Démarrer le polling des alertes (toutes les 30 secondes)
+    this.startAlertPolling();
   }
 
   filterMenuByRole() {
@@ -161,6 +205,21 @@ class CocaisseApp {
     // Mobile menu button
     document.getElementById('mobileMenuBtn')?.addEventListener('click', () => {
       this.openMobileMenu();
+    });
+
+    // Alerts panel button
+    document.getElementById('alertsPanelBtn')?.addEventListener('click', () => {
+      this.showAlertsPanel();
+    });
+
+    // Statistics button
+    document.getElementById('statsBtn')?.addEventListener('click', () => {
+      this.showOrdersStatistics();
+    });
+
+    // Logout button
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      this.logout();
     });
 
     // Search products
@@ -828,56 +887,6 @@ class CocaisseApp {
     }
   }
 
-  // Charger les statistiques par période
-  async loadPeriodStats() {
-    try {
-      const today = new Date();
-
-      // Aujourd'hui
-      const todayStr = today.toISOString().split('T')[0];
-
-      // Cette semaine (lundi au dimanche)
-      const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - today.getDay() + 1);
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-
-      // Ce mois
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      const monthStartStr = monthStart.toISOString().split('T')[0];
-
-      // Cette année
-      const yearStart = new Date(today.getFullYear(), 0, 1);
-      const yearStartStr = yearStart.toISOString().split('T')[0];
-
-      // Requêtes parallèles
-      const [todayRes, weekRes, monthRes, yearRes] = await Promise.all([
-        fetch(`${API_URL}/transactions/summary/period?start=${todayStr}&end=${todayStr}`),
-        fetch(`${API_URL}/transactions/summary/period?start=${weekStartStr}&end=${todayStr}`),
-        fetch(`${API_URL}/transactions/summary/period?start=${monthStartStr}&end=${todayStr}`),
-        fetch(`${API_URL}/transactions/summary/period?start=${yearStartStr}&end=${todayStr}`)
-      ]);
-
-      const [todayData, weekData, monthData, yearData] = await Promise.all([
-        todayRes.json(),
-        weekRes.json(),
-        monthRes.json(),
-        yearRes.json()
-      ]);
-
-      // Mettre à jour l'affichage
-      const statToday = document.getElementById('statToday');
-      const statWeek = document.getElementById('statWeek');
-      const statMonth = document.getElementById('statMonth');
-      const statYear = document.getElementById('statYear');
-
-      if (statToday) statToday.textContent = (todayData.total || 0).toFixed(2) + ' €';
-      if (statWeek) statWeek.textContent = (weekData.total || 0).toFixed(2) + ' €';
-      if (statMonth) statMonth.textContent = (monthData.total || 0).toFixed(2) + ' €';
-      if (statYear) statYear.textContent = (yearData.total || 0).toFixed(2) + ' €';
-    } catch (error) {
-      console.error('Error loading period stats:', error);
-    }
-  }
 
   // Charger les statistiques journalières d'un caissier
   async loadCashierDailyStats(cashierId, startDate, endDate, transactions) {
@@ -977,7 +986,6 @@ class CocaisseApp {
       const users = await response.json();
 
       const currentValue = filterSelect.value;
-
       filterSelect.innerHTML = `
         <option value="">Tous les caissiers</option>
         ${users.map(user => `
@@ -995,24 +1003,18 @@ class CocaisseApp {
   async loadPeriodStats() {
     try {
       const today = new Date();
-
-      // Aujourd'hui
       const todayStr = today.toISOString().split('T')[0];
 
-      // Cette semaine (lundi au dimanche)
       const weekStart = new Date(today);
       weekStart.setDate(today.getDate() - today.getDay() + 1);
       const weekStartStr = weekStart.toISOString().split('T')[0];
 
-      // Ce mois
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       const monthStartStr = monthStart.toISOString().split('T')[0];
 
-      // Cette année
       const yearStart = new Date(today.getFullYear(), 0, 1);
       const yearStartStr = yearStart.toISOString().split('T')[0];
 
-      // Requêtes parallèles
       const [todayRes, weekRes, monthRes, yearRes] = await Promise.all([
         fetch(`${API_URL}/transactions/summary/period?start=${todayStr}&end=${todayStr}`),
         fetch(`${API_URL}/transactions/summary/period?start=${weekStartStr}&end=${todayStr}`),
@@ -1021,37 +1023,23 @@ class CocaisseApp {
       ]);
 
       const [todayData, weekData, monthData, yearData] = await Promise.all([
-        todayRes.json(),
-        weekRes.json(),
-        monthRes.json(),
-        yearRes.json()
+        todayRes.json(), weekRes.json(), monthRes.json(), yearRes.json()
       ]);
 
-      // Mettre à jour l'affichage
-      document.getElementById('statToday').textContent = (todayData.total || 0).toFixed(2) + ' €';
-      document.getElementById('statWeek').textContent = (weekData.total || 0).toFixed(2) + ' €';
-      document.getElementById('statMonth').textContent = (monthData.total || 0).toFixed(2) + ' €';
-      document.getElementById('statYear').textContent = (yearData.total || 0).toFixed(2) + ' €';
+      const statToday = document.getElementById('statToday');
+      const statWeek = document.getElementById('statWeek');
+      const statMonth = document.getElementById('statMonth');
+      const statYear = document.getElementById('statYear');
+
+      if (statToday) statToday.textContent = (todayData.total || 0).toFixed(2) + ' €';
+      if (statWeek) statWeek.textContent = (weekData.total || 0).toFixed(2) + ' €';
+      if (statMonth) statMonth.textContent = (monthData.total || 0).toFixed(2) + ' €';
+      if (statYear) statYear.textContent = (yearData.total || 0).toFixed(2) + ' €';
     } catch (error) {
       console.error('Error loading period stats:', error);
     }
   }
 
-  // Charger la liste des caissiers pour le filtre
-  async loadCashiersFilter() {
-    try {
-      const response = await fetch(`${API_URL}/users`);
-      const users = await response.json();
-
-      const select = document.getElementById('filterCashier');
-      if (!select) return;
-
-      select.innerHTML = '<option value="">Tous les caissiers</option>' +
-        users.map(u => `<option value="${u.id}">${u.username} (${u.role})</option>`).join('');
-    } catch (error) {
-      console.error('Error loading cashiers:', error);
-    }
-  }
 
   // Afficher le détail d'une transaction
   async showTransactionDetail(transactionId) {
@@ -1256,7 +1244,10 @@ class CocaisseApp {
     if (section === 'orders') this.loadOrders();
     if (section === 'products') this.filterProducts('');
     if (section === 'history') this.loadTransactions();
-    if (section === 'settings') this.loadUsers();
+    if (section === 'settings') {
+      this.loadUsers();
+      this.loadSettingsData();
+    }
   }
 
   openProductDialog(productId = null) {
@@ -1767,20 +1758,79 @@ ${dash}
 
   // ===== SETTINGS =====
   async saveSettings() {
-    const settings = {
-      company_name: document.getElementById('companyName').value,
-      company_address: document.getElementById('companyAddress').value,
-      company_phone: document.getElementById('companyPhone').value,
-      company_email: document.getElementById('companyEmail').value,
-      tax_number: document.getElementById('taxNumber').value,
-      default_tax_rate: parseFloat(document.getElementById('defaultTaxRate').value) || 20,
-      receipt_header: document.getElementById('receiptHeader').value,
-      receipt_footer: document.getElementById('receiptFooter').value
-    };
+    try {
+      const settings = {
+        company_name: document.getElementById('companyName')?.value,
+        company_address: document.getElementById('companyAddress')?.value,
+        company_phone: document.getElementById('companyPhone')?.value,
+        company_email: document.getElementById('companyEmail')?.value,
+        tax_number: document.getElementById('taxNumber')?.value,
+        default_tax_rate: parseFloat(document.getElementById('defaultTaxRate')?.value) || 20,
+        receipt_header: document.getElementById('receiptHeader')?.value,
+        receipt_footer: document.getElementById('receiptFooter')?.value,
+        alert_enabled: document.getElementById('alertEnabled')?.checked ? 1 : 0,
+        alert_sound_enabled: document.getElementById('alertSoundEnabled')?.checked ? 1 : 0,
+        alert_draft_minutes: parseInt(document.getElementById('alertDraftMinutes')?.value) || 15,
+        alert_validated_minutes: parseInt(document.getElementById('alertValidatedMinutes')?.value) || 10,
+        alert_kitchen_minutes: parseInt(document.getElementById('alertKitchenMinutes')?.value) || 20,
+        alert_ready_minutes: parseInt(document.getElementById('alertReadyMinutes')?.value) || 5,
+        alert_served_minutes: parseInt(document.getElementById('alertServedMinutes')?.value) || 30,
+        alert_remind_after_dismiss: parseInt(document.getElementById('alertRemindAfterDismiss')?.value) || 10
+      };
 
-    this.settings = settings;
-    localStorage.setItem('cocaisse_settings', JSON.stringify(settings));
-    this.toastSuccess('Paramètres enregistrés');
+      // Sauvegarder dans l'API
+      const response = await fetch(`${API_URL}/settings`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(settings)
+      });
+
+      if (!response.ok) throw new Error('Erreur lors de la sauvegarde');
+
+      this.settings = settings;
+      localStorage.setItem('cocaisse_settings', JSON.stringify(settings));
+      this.toastSuccess('Paramètres enregistrés');
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      this.toastError('Erreur: ' + error.message);
+    }
+  }
+
+  async loadSettingsData() {
+    try {
+      const response = await fetch(`${API_URL}/settings`, {
+        headers: this.getAuthHeaders()
+      });
+      const settings = await response.json();
+
+      if (settings) {
+        this.settings = settings;
+
+        // Remplir les champs du formulaire
+        if (document.getElementById('companyName')) {
+          document.getElementById('companyName').value = settings.company_name || '';
+          document.getElementById('companyAddress').value = settings.company_address || '';
+          document.getElementById('companyPhone').value = settings.company_phone || '';
+          document.getElementById('companyEmail').value = settings.company_email || '';
+          document.getElementById('taxNumber').value = settings.tax_number || '';
+          document.getElementById('defaultTaxRate').value = settings.default_tax_rate || 20;
+          document.getElementById('receiptHeader').value = settings.receipt_header || '';
+          document.getElementById('receiptFooter').value = settings.receipt_footer || '';
+
+          // Paramètres d'alerte
+          document.getElementById('alertEnabled').checked = settings.alert_enabled === 1;
+          document.getElementById('alertSoundEnabled').checked = settings.alert_sound_enabled === 1;
+          document.getElementById('alertDraftMinutes').value = settings.alert_draft_minutes || 15;
+          document.getElementById('alertValidatedMinutes').value = settings.alert_validated_minutes || 10;
+          document.getElementById('alertKitchenMinutes').value = settings.alert_kitchen_minutes || 20;
+          document.getElementById('alertReadyMinutes').value = settings.alert_ready_minutes || 5;
+          document.getElementById('alertServedMinutes').value = settings.alert_served_minutes || 30;
+          document.getElementById('alertRemindAfterDismiss').value = settings.alert_remind_after_dismiss || 10;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
   }
 
   // ===== DATA EXPORT/IMPORT =====
@@ -2070,8 +2120,14 @@ CocaisseApp.prototype.renderOrders = function() {
     // Vérifier si l'utilisateur est admin pour afficher le créateur
     const isAdmin = this.currentUser?.role === 'admin';
 
+    // Trouver si cette commande est en alerte (calculé par _checkAndNotify toutes les 5s)
+    const alertData = this.alerts.find(a => a.id === order.id);
+    const alertLevel = alertData?.alert_level || null;
+    const alertClass = alertLevel === 'critical' ? 'order-card-alert-critical'
+                     : alertLevel === 'warning'  ? 'order-card-alert-warning' : '';
+
     return `
-      <div class="order-card" onclick="app.viewOrderDetail('${order.id}')">
+      <div class="order-card ${alertClass}" onclick="app.viewOrderDetail('${order.id}')">
         <div class="order-card-header">
           <div>
             <p class="font-bold text-gray-800">${order.order_number}</p>
@@ -2081,6 +2137,14 @@ CocaisseApp.prototype.renderOrders = function() {
             ${statusIcons[order.status]} ${statusLabels[order.status]}
           </span>
         </div>
+
+        ${alertData ? `
+          <div class="mt-2 p-2 rounded-lg ${alertLevel === 'critical' ? 'bg-red-100 border border-red-300' : 'bg-orange-100 border border-orange-300'}">
+            <p class="text-xs font-semibold ${alertLevel === 'critical' ? 'text-red-700' : 'text-orange-700'}">
+              ${alertLevel === 'critical' ? '🚨' : '⚠️'} En retard de ${alertData.delay_minutes} min
+            </p>
+          </div>
+        ` : ''}
 
         ${order.table_number ? `
           <p class="text-sm font-medium text-gray-700 mb-2">📍 ${order.table_number}</p>
@@ -2420,10 +2484,11 @@ CocaisseApp.prototype.validateOrder = async function(orderId) {
     });
 
     if (!response.ok) throw new Error('Erreur lors de la validation');
-
     this.toastSuccess('Commande validée !');
     this.closeModal('orderDetailModal');
-    this.loadOrders();
+    this.resetAlertForOrder(orderId);
+    await this.loadOrders();
+    await this.loadAlerts();
   } catch (error) {
     console.error('Error validating order:', error);
     this.toastError('Erreur lors de la validation');
@@ -2438,10 +2503,11 @@ CocaisseApp.prototype.sendToKitchen = async function(orderId) {
     });
 
     if (!response.ok) throw new Error('Erreur');
-
     this.toastSuccess('Commande envoyée en cuisine !');
     this.closeModal('orderDetailModal');
-    this.loadOrders();
+    this.resetAlertForOrder(orderId);
+    await this.loadOrders();
+    await this.loadAlerts();
   } catch (error) {
     console.error('Error sending to kitchen:', error);
     this.toastError('Erreur lors de l\'envoi en cuisine');
@@ -2456,10 +2522,11 @@ CocaisseApp.prototype.markOrderReady = async function(orderId) {
     });
 
     if (!response.ok) throw new Error('Erreur');
-
     this.toastSuccess('Commande marquée comme prête !');
     this.closeModal('orderDetailModal');
-    this.loadOrders();
+    this.resetAlertForOrder(orderId);
+    await this.loadOrders();
+    await this.loadAlerts();
   } catch (error) {
     console.error('Error marking ready:', error);
     this.toastError('Erreur');
@@ -2474,10 +2541,11 @@ CocaisseApp.prototype.markOrderServed = async function(orderId) {
     });
 
     if (!response.ok) throw new Error('Erreur');
-
     this.toastSuccess('Commande marquée comme servie !');
     this.closeModal('orderDetailModal');
-    this.loadOrders();
+    this.resetAlertForOrder(orderId);
+    await this.loadOrders();
+    await this.loadAlerts();
   } catch (error) {
     console.error('Error marking served:', error);
     this.toastError('Erreur');
@@ -2516,6 +2584,11 @@ CocaisseApp.prototype.payOrder = async function(orderId) {
     if (result.transaction) {
       this.viewReceipt(result.transaction.id);
     }
+
+    // Recharger commandes et alertes
+    this.resetAlertForOrder(orderId);
+    await this.loadOrders();
+    await this.loadAlerts();
 
     this.loadOrders();
   } catch (error) {
@@ -2635,6 +2708,444 @@ CocaisseApp.prototype.deleteOrder = async function(orderId) {
     console.error('Error deleting order:', error);
     this.toastError('Erreur lors de la suppression');
   }
+};
+
+// ===== SYSTÈME D'ALERTES =====
+
+CocaisseApp.prototype.startAlertPolling = function() {
+  // 1. Chargement initial des alertes depuis le serveur
+  this.loadAlerts();
+
+  // 2. Polling serveur toutes les 60s (juste pour synchroniser les nouvelles commandes)
+  this.alertPollingInterval = setInterval(() => this.loadAlerts(), 60000);
+
+  // 3. Timer local toutes les 5s : détecte les dépassements de seuil EN TEMPS RÉEL
+  //    sans appel serveur — c'est lui qui déclenche les notifications
+  this.alertDisplayInterval = setInterval(() => this._checkAndNotify(), 5000);
+};
+
+CocaisseApp.prototype.stopAlertPolling = function() {
+  if (this.alertPollingInterval) { clearInterval(this.alertPollingInterval); this.alertPollingInterval = null; }
+  if (this.alertDisplayInterval) { clearInterval(this.alertDisplayInterval); this.alertDisplayInterval = null; }
+};
+
+// Calcule le nombre de minutes écoulées depuis status_since
+CocaisseApp.prototype._elapsedMin = function(status_since) {
+  if (!status_since) return 0;
+  return Math.floor((Date.now() - new Date(status_since).getTime()) / 60000);
+};
+
+// Calcule le retard réel (elapsed - seuil)
+CocaisseApp.prototype._computeDelay = function(alert) {
+  if (!alert.status_since || !alert.alert_threshold_minutes) return alert.delay_minutes || 0;
+  const elapsed = this._elapsedMin(alert.status_since);
+  return Math.max(0, elapsed - alert.alert_threshold_minutes);
+};
+
+// Calcule le niveau d'alerte en temps réel
+CocaisseApp.prototype._computeLevel = function(alert) {
+  if (!alert.status_since || !alert.alert_threshold_minutes) return alert.alert_level || 'warning';
+  const elapsed = this._elapsedMin(alert.status_since);
+  if (elapsed >= alert.alert_threshold_minutes * 2) return 'critical';
+  if (elapsed >= alert.alert_threshold_minutes) return 'warning';
+  return null; // pas encore en alerte
+};
+
+// ★ Cœur du système : appelé toutes les 5s, déclenche les notifications au bon moment
+CocaisseApp.prototype._checkAndNotify = function() {
+  if (!this.alertsRaw || this.alertsRaw.length === 0) {
+    this.alerts = [];
+    this.updateAlertBadge(0);
+    return;
+  }
+
+  const now = Date.now();
+  const remindAfterMs = ((this.settings?.alert_remind_after_dismiss) || 10) * 60000;
+  const toNotify = [];
+
+  // Recalculer chaque alerte en temps réel
+  const updated = this.alertsRaw.map(raw => {
+    const elapsed = this._elapsedMin(raw.status_since);
+    const threshold = raw.alert_threshold_minutes || 15;
+    const delay = Math.max(0, elapsed - threshold);
+    const level = elapsed >= threshold * 2 ? 'critical'
+                : elapsed >= threshold       ? 'warning'
+                : null; // pas encore en alerte
+
+    if (!level) return null; // ignorer : seuil pas encore atteint
+
+    const alert = { ...raw, delay_minutes: delay, alert_level: level };
+
+    // --- Logique de notification ---
+    // On notifie dès le WARNING (1ère fois que le seuil est dépassé)
+    // On re-notifie quand ça passe de warning → critical
+    // On re-notifie après dismiss si le délai de relance est écoulé
+
+    const alreadyNotified = this.notifiedAlerts.has(raw.id);
+    const prevLevel = this.notifiedLevels?.get(raw.id);
+
+    if (!alreadyNotified) {
+      // 1ère notification (warning ou critical)
+      toNotify.push(alert);
+      this.notifiedAlerts.add(raw.id);
+      if (!this.notifiedLevels) this.notifiedLevels = new Map();
+      this.notifiedLevels.set(raw.id, level);
+    } else if (level === 'critical' && prevLevel === 'warning') {
+      // Escalade warning → critical : re-notifier
+      toNotify.push(alert);
+      if (!this.notifiedLevels) this.notifiedLevels = new Map();
+      this.notifiedLevels.set(raw.id, 'critical');
+    } else {
+      // Vérifier relance après dismiss
+      const dismissedTime = this.dismissedAlerts.get(raw.id);
+      if (dismissedTime && (now - dismissedTime) >= remindAfterMs) {
+        this.dismissedAlerts.delete(raw.id);
+        this.notifiedAlerts.delete(raw.id);
+        if (this.notifiedLevels) this.notifiedLevels.delete(raw.id);
+        toNotify.push(alert);
+        this.notifiedAlerts.add(raw.id);
+        if (!this.notifiedLevels) this.notifiedLevels = new Map();
+        this.notifiedLevels.set(raw.id, level);
+      }
+    }
+
+    return alert;
+  }).filter(Boolean);
+
+  this.alerts = updated;
+
+  // Déclencher les notifications
+  if (toNotify.length > 0) {
+    if (this.settings?.alert_sound_enabled !== 0) this.playAlertSound();
+    this.displayAlerts(toNotify);
+  }
+
+  // Badge : toutes les alertes non dismissées
+  const unseen = updated.filter(a => !this.dismissedAlerts.has(a.id));
+  this.updateAlertBadge(unseen.length);
+
+  // Re-render commandes si visible
+  if (this.currentSection === 'orders' && this.orders.length > 0) {
+    this.renderOrders();
+  }
+};
+
+// Met à jour les delays sans refetch serveur (pour rétrocompatibilité)
+CocaisseApp.prototype._refreshAlertDisplay = function() {
+  this._checkAndNotify();
+};
+
+CocaisseApp.prototype.loadAlerts = async function() {
+  try {
+    const response = await fetch(`${API_URL}/orders/alerts/pending`, {
+      headers: this.getAuthHeaders()
+    });
+    if (!response.ok) return;
+    const freshAlerts = await response.json();
+
+    // Stocker les données brutes du serveur (avec status_since et alert_threshold_minutes)
+    // Le calcul temps réel sera fait par _checkAndNotify()
+    this.alertsRaw = freshAlerts;
+
+    // Nettoyer les IDs disparus de notifiedAlerts, notifiedLevels et dismissedAlerts
+    const currentIds = new Set(freshAlerts.map(a => a.id));
+    this.notifiedAlerts.forEach(id => {
+      if (!currentIds.has(id)) {
+        this.notifiedAlerts.delete(id);
+        this.notifiedLevels.delete(id);
+        this.dismissedAlerts.delete(id);
+      }
+    });
+
+    // Déclencher immédiatement une vérification locale
+    this._checkAndNotify();
+
+  } catch (error) {
+    console.error('Error loading alerts:', error);
+  }
+};
+
+// Appelé après CHAQUE changement de statut pour reset la notification
+CocaisseApp.prototype.resetAlertForOrder = function(orderId) {
+  this.notifiedAlerts.delete(orderId);
+  this.notifiedLevels.delete(orderId);
+  this.dismissedAlerts.delete(orderId);
+  if (this.alertsRaw) this.alertsRaw = this.alertsRaw.filter(a => a.id !== orderId);
+  this.alerts = this.alerts.filter(a => a.id !== orderId);
+  this._refreshAlertDisplay();
+};
+
+CocaisseApp.prototype.updateAlertBadge = function(count) {
+  const badge = document.getElementById('alertBadge');
+  if (!badge) return;
+
+  if (count > 0) {
+    badge.textContent = count;
+    badge.classList.remove('hidden');
+    badge.classList.add('animate-pulse');
+  } else {
+    badge.classList.add('hidden');
+    badge.classList.remove('animate-pulse');
+  }
+};
+
+CocaisseApp.prototype.playAlertSound = function() {
+  const now = Date.now();
+  // Éviter de jouer le son plus d'une fois par minute
+  if (now - this.lastAlertSound < 60000) return;
+
+  this.lastAlertSound = now;
+
+  // Créer un beep sonore simple
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  oscillator.frequency.value = 800;
+  oscillator.type = 'sine';
+
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + 0.5);
+};
+
+CocaisseApp.prototype.displayAlerts = function(alerts) {
+  if (alerts.length === 0) return;
+
+  if (alerts.length === 1) {
+    const a = alerts[0];
+    const icon = a.alert_level === 'critical' ? '🚨' : '⚠️';
+    const msg = a.alert_level === 'critical'
+      ? `${icon} CRITIQUE: Commande ${a.order_number} en retard de ${a.delay_minutes} min (${a.status_label})`
+      : `${icon} Commande ${a.order_number} en retard de ${a.delay_minutes} min (${a.status_label})`;
+    this.toastError(msg, { duration: 10000 });
+  } else {
+    const critical = alerts.filter(a => a.alert_level === 'critical').length;
+    const warning  = alerts.filter(a => a.alert_level === 'warning').length;
+    let msg = '';
+    if (critical > 0) msg += `🚨 ${critical} critique(s) `;
+    if (warning > 0)  msg += `⚠️ ${warning} en retard `;
+    msg += '— Cliquez sur 🔔';
+    this.toastError(msg, { duration: 10000 });
+  }
+};
+
+// Alias pour compatibilité
+CocaisseApp.prototype.displayCriticalAlerts = function(alerts) {
+  this.displayAlerts(alerts);
+};
+
+CocaisseApp.prototype.showAlertsPanel = function() {
+  const modalContent = `
+    <div class="modal-header">
+      <h2 class="text-2xl font-bold text-gray-800">🔔 Alertes Commandes</h2>
+      <button onclick="app.closeModal('alertsModal')" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+      ${this.alerts.length === 0 ? `
+        <div class="text-center py-8">
+          <p class="text-gray-500 text-lg">✅ Aucune alerte en cours</p>
+        </div>
+      ` : `
+        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+          <p class="text-sm text-blue-800">
+            <strong>${this.alerts.length}</strong> alerte${this.alerts.length > 1 ? 's' : ''} active${this.alerts.length > 1 ? 's' : ''}
+          </p>
+          <button 
+            onclick="app.dismissAllAlerts()" 
+            class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+          >
+            ✓ Marquer comme vues
+          </button>
+        </div>
+        ${this.alerts.map(alert => `
+        <div class="p-4 mb-3 rounded-lg border-2 ${
+          alert.alert_level === 'critical' 
+            ? 'bg-red-50 border-red-500' 
+            : 'bg-orange-50 border-orange-500'
+        }">
+          <div class="flex items-start justify-between mb-2">
+            <div>
+              <p class="font-bold text-lg ${
+                alert.alert_level === 'critical' ? 'text-red-700' : 'text-orange-700'
+              }">
+                ${alert.alert_level === 'critical' ? '🚨' : '⚠️'} ${alert.order_number}
+              </p>
+              <p class="text-sm text-gray-600">${alert.table_number || 'Sans table'}</p>
+            </div>
+            <span class="px-3 py-1 rounded-full text-sm font-medium ${
+              alert.alert_level === 'critical' 
+                ? 'bg-red-600 text-white' 
+                : 'bg-orange-500 text-white'
+            }">
+              ${alert.status_label}
+            </span>
+          </div>
+          
+          <div class="mb-2">
+            <p class="text-sm text-gray-700">
+              <span class="font-semibold">Temps écoulé:</span> ${this._elapsedMin(alert.status_since)} min
+            </p>
+            <p class="text-sm text-gray-700">
+              <span class="font-semibold">Retard:</span> ${alert.delay_minutes} min
+            </p>
+            ${this.currentUser?.role === 'admin' ? `
+              <p class="text-sm text-gray-700">
+                <span class="font-semibold">Créée par:</span> ${alert.cashier_name}
+              </p>
+            ` : ''}
+          </div>
+          
+          <div class="flex gap-2 mt-3">
+            <button 
+              onclick="app.viewOrderDetail('${alert.id}')" 
+              class="btn btn-sm bg-blue-500 text-white hover:bg-blue-600"
+            >
+              👁️ Voir détails
+            </button>
+            ${alert.status === 'draft' ? `
+              <button 
+                onclick="app.validateOrder('${alert.id}')" 
+                class="btn btn-sm bg-green-500 text-white hover:bg-green-600"
+              >
+                ✅ Valider
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `).join('')}
+      `}
+    </div>
+  `;
+
+  this.showModalWithContent('alertsModal', modalContent);
+};
+
+CocaisseApp.prototype.showOrdersStatistics = async function() {
+  try {
+    const response = await fetch(`${API_URL}/orders/stats/detailed`, {
+      headers: this.getAuthHeaders()
+    });
+    const stats = await response.json();
+
+    const modalContent = `
+      <div class="modal-header">
+        <h2 class="text-2xl font-bold text-gray-800">📊 Statistiques Détaillées des Commandes</h2>
+        <button onclick="app.closeModal('statsModal')" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <!-- Statistiques par statut -->
+        <div class="mb-6">
+          <h3 class="text-xl font-bold text-gray-700 mb-3">📈 Répartition par Statut</h3>
+          <div class="grid grid-cols-2 gap-3">
+            ${stats.status_stats.map(stat => {
+              const statusLabels = {
+                draft: { label: 'Brouillons', icon: '📝', color: 'gray' },
+                validated: { label: 'Validées', icon: '✅', color: 'green' },
+                in_kitchen: { label: 'En cuisine', icon: '👨‍🍳', color: 'blue' },
+                ready: { label: 'Prêtes', icon: '🔔', color: 'purple' },
+                served: { label: 'Servies', icon: '🍽️', color: 'indigo' },
+                paid: { label: 'Payées', icon: '💰', color: 'emerald' }
+              };
+              const info = statusLabels[stat.status] || { label: stat.status, icon: '•', color: 'gray' };
+              
+              return `
+                <div class="stat-card bg-${info.color}-50 border-${info.color}-200">
+                  <p class="text-sm text-gray-600">${info.icon} ${info.label}</p>
+                  <p class="text-3xl font-bold text-${info.color}-700">${stat.count}</p>
+                  <p class="text-xs text-gray-500">Total: ${stat.total_amount?.toFixed(2) || '0.00'} €</p>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+        
+        <!-- Temps moyen par transition -->
+        <div>
+          <h3 class="text-xl font-bold text-gray-700 mb-3">⏱️ Temps Moyen par Étape</h3>
+          <div class="space-y-2">
+            ${stats.time_stats.map(stat => {
+              const transitionLabels = {
+                'draft_to_validated': 'Brouillon → Validation',
+                'validated_to_kitchen': 'Validation → Cuisine',
+                'kitchen_to_ready': 'Cuisine → Prête',
+                'ready_to_served': 'Prête → Servie',
+                'served_to_paid': 'Servie → Payée'
+              };
+              
+              const avgMin = Math.round(stat.avg_minutes || 0);
+              const color = avgMin > 30 ? 'red' : avgMin > 15 ? 'orange' : 'green';
+              
+              return `
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <span class="text-sm font-medium text-gray-700">
+                    ${transitionLabels[stat.transition] || stat.transition}
+                  </span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-lg font-bold text-${color}-600">${avgMin} min</span>
+                    <span class="text-xs text-gray-500">(${stat.count} commandes)</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.showModalWithContent('statsModal', modalContent);
+  } catch (error) {
+    console.error('Error loading statistics:', error);
+    this.toastError('Erreur lors du chargement des statistiques');
+  }
+};
+
+CocaisseApp.prototype.showModalWithContent = function(modalId, content) {
+  let modal = document.getElementById(modalId);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'modal';
+
+    // Ajouter backdrop + content
+    modal.innerHTML = `
+      <div class="modal-backdrop" onclick="app.closeModal('${modalId}')"></div>
+      <div class="modal-content" style="max-width: 800px;">
+        ${content}
+      </div>
+    `;
+    document.body.appendChild(modal);
+  } else {
+    // Modal existe déjà, mettre à jour le contenu
+    const contentEl = modal.querySelector('.modal-content');
+    if (contentEl) {
+      contentEl.innerHTML = content;
+    }
+  }
+
+  // Afficher le modal
+  modal.classList.remove('hidden');
+};
+
+CocaisseApp.prototype.dismissAllAlerts = function() {
+  const now = Date.now();
+
+  // Marquer toutes les alertes actuelles comme dismissed avec timestamp
+  this.alerts.forEach(alert => {
+    this.dismissedAlerts.set(alert.id, now);
+  });
+
+  // Réinitialiser badge
+  this.updateAlertBadge(0);
+  this.closeModal('alertsModal');
+
+  const remindAfter = this.settings?.alert_remind_after_dismiss || 10;
+  this.toastSuccess(`Alertes masquées — relance dans ${remindAfter} min si non traitées`);
 };
 
 // Initialize app

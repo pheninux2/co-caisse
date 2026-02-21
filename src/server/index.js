@@ -11,6 +11,7 @@ import transactionRoutes from './routes/transactions.js';
 import userRoutes from './routes/users.js';
 import reportRoutes from './routes/reports.js';
 import orderRoutes from './routes/orders.js';
+import settingsRoutes from './routes/settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -34,6 +35,7 @@ app.use('/api/transactions', authMiddleware, transactionRoutes);
 app.use('/api/orders', authMiddleware, orderRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/reports', authMiddleware, reportRoutes);
+app.use('/api/settings', authMiddleware, settingsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

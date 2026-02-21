@@ -79,6 +79,40 @@ html, body {
   @apply bg-indigo-500 text-white;
 }
 
+/* Alert Animations pour commandes */
+@keyframes alertPulseOrange {
+  0%, 100% {
+    background-color: #fed7aa;
+    border-color: #fb923c;
+  }
+  50% {
+    background-color: #ffedd5;
+    border-color: #fdba74;
+  }
+}
+
+@keyframes alertPulseRed {
+  0%, 100% {
+    background-color: #fecaca;
+    border-color: #f87171;
+  }
+  50% {
+    background-color: #fee2e2;
+    border-color: #fca5a5;
+  }
+}
+
+.order-card-alert-warning {
+  animation: alertPulseOrange 3s ease-in-out infinite;
+  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.1);
+}
+
+.order-card-alert-critical {
+  animation: alertPulseRed 2s ease-in-out infinite;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2);
+}
+
+
 /* Product Cards */
 .product-card {
   @apply bg-white border border-gray-100 rounded-xl p-2 cursor-pointer hover:shadow-lg hover:border-indigo-300 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98];

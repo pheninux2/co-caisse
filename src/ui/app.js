@@ -2942,14 +2942,21 @@ CocaisseApp.prototype.displayCriticalAlerts = function(alerts) {
 
 CocaisseApp.prototype.showAlertsPanel = function() {
   const modalContent = `
-    <div class="modal-header">
-      <h2 class="text-2xl font-bold text-gray-800">🔔 Alertes Commandes</h2>
-      <button onclick="app.closeModal('alertsModal')" class="modal-close">✕</button>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+        🔔 Alertes Commandes
+        ${this.alerts.length > 0 ? `<span class="text-sm font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">${this.alerts.length}</span>` : ''}
+      </h2>
+      <button onclick="app.closeModal('alertsModal')" 
+        class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-800 text-lg font-bold transition">
+        ✕
+      </button>
     </div>
-    <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+    <div style="max-height: 65vh; overflow-y: auto;">
       ${this.alerts.length === 0 ? `
-        <div class="text-center py-8">
-          <p class="text-gray-500 text-lg">✅ Aucune alerte en cours</p>
+        <div class="text-center py-12">
+          <p class="text-5xl mb-3">✅</p>
+          <p class="text-gray-500 text-lg font-medium">Aucune alerte en cours</p>
         </div>
       ` : `
         <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
@@ -2960,66 +2967,60 @@ CocaisseApp.prototype.showAlertsPanel = function() {
             onclick="app.dismissAllAlerts()" 
             class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
           >
-            ✓ Marquer comme vues
+            ✓ Tout marquer comme vu
           </button>
         </div>
         ${this.alerts.map(alert => `
-        <div class="p-4 mb-3 rounded-lg border-2 ${
-          alert.alert_level === 'critical' 
-            ? 'bg-red-50 border-red-500' 
-            : 'bg-orange-50 border-orange-500'
-        }">
-          <div class="flex items-start justify-between mb-2">
-            <div>
-              <p class="font-bold text-lg ${
-                alert.alert_level === 'critical' ? 'text-red-700' : 'text-orange-700'
+          <div class="p-4 mb-3 rounded-xl border-2 ${
+            alert.alert_level === 'critical'
+              ? 'bg-red-50 border-red-400'
+              : 'bg-orange-50 border-orange-400'
+          }">
+            <div class="flex items-start justify-between mb-2">
+              <div>
+                <p class="font-bold text-base ${alert.alert_level === 'critical' ? 'text-red-700' : 'text-orange-700'}">
+                  ${alert.alert_level === 'critical' ? '🚨' : '⚠️'} ${alert.order_number}
+                </p>
+                <p class="text-xs text-gray-500 mt-0.5">${alert.table_number || 'Sans table'}</p>
+              </div>
+              <span class="px-2 py-1 rounded-full text-xs font-semibold ${
+                alert.alert_level === 'critical'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-orange-500 text-white'
               }">
-                ${alert.alert_level === 'critical' ? '🚨' : '⚠️'} ${alert.order_number}
-              </p>
-              <p class="text-sm text-gray-600">${alert.table_number || 'Sans table'}</p>
+                ${alert.status_label}
+              </span>
             </div>
-            <span class="px-3 py-1 rounded-full text-sm font-medium ${
-              alert.alert_level === 'critical' 
-                ? 'bg-red-600 text-white' 
-                : 'bg-orange-500 text-white'
-            }">
-              ${alert.status_label}
-            </span>
-          </div>
-          
-          <div class="mb-2">
-            <p class="text-sm text-gray-700">
-              <span class="font-semibold">Temps écoulé:</span> ${this._elapsedMin(alert.status_since)} min
-            </p>
-            <p class="text-sm text-gray-700">
-              <span class="font-semibold">Retard:</span> ${alert.delay_minutes} min
-            </p>
-            ${this.currentUser?.role === 'admin' ? `
-              <p class="text-sm text-gray-700">
-                <span class="font-semibold">Créée par:</span> ${alert.cashier_name}
-              </p>
-            ` : ''}
-          </div>
-          
-          <div class="flex gap-2 mt-3">
-            <button 
-              onclick="app.viewOrderDetail('${alert.id}')" 
-              class="btn btn-sm bg-blue-500 text-white hover:bg-blue-600"
-            >
-              👁️ Voir détails
-            </button>
-            ${alert.status === 'draft' ? `
-              <button 
-                onclick="app.validateOrder('${alert.id}')" 
-                class="btn btn-sm bg-green-500 text-white hover:bg-green-600"
-              >
-                ✅ Valider
+            <div class="mb-3 text-sm text-gray-700 space-y-0.5">
+              <p><span class="font-medium">Temps écoulé :</span> ${this._elapsedMin(alert.status_since)} min</p>
+              <p><span class="font-medium">Retard :</span> ${alert.delay_minutes} min</p>
+              ${this.currentUser?.role === 'admin' ? `
+                <p><span class="font-medium">Créée par :</span> ${alert.cashier_name}</p>
+              ` : ''}
+            </div>
+            <div class="flex gap-2">
+              <button
+                onclick="app.closeModal('alertsModal'); app.viewOrderDetail('${alert.id}')"
+                class="flex-1 py-1.5 text-sm font-medium bg-white border border-blue-300 text-blue-700 hover:bg-blue-50 rounded-lg transition">
+                👁️ Voir détails
               </button>
-            ` : ''}
+              ${alert.status === 'draft' ? `
+                <button
+                  onclick="app.closeModal('alertsModal'); app.validateOrder('${alert.id}')"
+                  class="flex-1 py-1.5 text-sm font-medium bg-green-500 hover:bg-green-600 text-white rounded-lg transition">
+                  ✅ Valider
+                </button>
+              ` : ''}
+            </div>
           </div>
-        </div>
-      `).join('')}
+        `).join('')}
       `}
+    </div>
+    <div class="flex justify-end mt-4 pt-3 border-t border-gray-100">
+      <button onclick="app.closeModal('alertsModal')"
+        class="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition text-sm">
+        Fermer
+      </button>
     </div>
   `;
 
@@ -3034,14 +3035,17 @@ CocaisseApp.prototype.showOrdersStatistics = async function() {
     const stats = await response.json();
 
     const modalContent = `
-      <div class="modal-header">
-        <h2 class="text-2xl font-bold text-gray-800">📊 Statistiques Détaillées des Commandes</h2>
-        <button onclick="app.closeModal('statsModal')" class="modal-close">✕</button>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold text-gray-800">📊 Statistiques Commandes</h2>
+        <button onclick="app.closeModal('statsModal')"
+          class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-800 text-lg font-bold transition">
+          ✕
+        </button>
       </div>
-      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+      <div style="max-height: 65vh; overflow-y: auto;">
         <!-- Statistiques par statut -->
         <div class="mb-6">
-          <h3 class="text-xl font-bold text-gray-700 mb-3">📈 Répartition par Statut</h3>
+          <h3 class="text-base font-bold text-gray-700 mb-3">📈 Répartition par Statut</h3>
           <div class="grid grid-cols-2 gap-3">
             ${stats.status_stats.map(stat => {
               const statusLabels = {
@@ -3096,6 +3100,12 @@ CocaisseApp.prototype.showOrdersStatistics = async function() {
           </div>
         </div>
       </div>
+      <div class="flex justify-end mt-4 pt-3 border-t border-gray-100">
+        <button onclick="app.closeModal('statsModal')"
+          class="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition text-sm">
+          Fermer
+        </button>
+      </div>
     `;
 
     this.showModalWithContent('statsModal', modalContent);
@@ -3111,8 +3121,8 @@ CocaisseApp.prototype.showModalWithContent = function(modalId, content) {
     modal = document.createElement('div');
     modal.id = modalId;
     modal.className = 'modal';
+    modal.style.zIndex = '60'; // inférieur à orderDetailModal (9999)
 
-    // Ajouter backdrop + content
     modal.innerHTML = `
       <div class="modal-backdrop" onclick="app.closeModal('${modalId}')"></div>
       <div class="modal-content" style="max-width: 800px;">
@@ -3121,14 +3131,12 @@ CocaisseApp.prototype.showModalWithContent = function(modalId, content) {
     `;
     document.body.appendChild(modal);
   } else {
-    // Modal existe déjà, mettre à jour le contenu
     const contentEl = modal.querySelector('.modal-content');
     if (contentEl) {
       contentEl.innerHTML = content;
     }
   }
 
-  // Afficher le modal
   modal.classList.remove('hidden');
 };
 

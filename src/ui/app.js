@@ -1998,7 +1998,24 @@ ${dash}
 CocaisseApp.prototype.loadOrders = async function() {
   try {
     const status = this.currentOrderFilter === 'all' ? '' : this.currentOrderFilter;
-    const url = status ? `${API_URL}/orders?status=${status}` : `${API_URL}/orders`;
+    const userRole = this.currentUser?.role || 'cashier';
+
+    // Construire l'URL avec les paramètres
+    let url = `${API_URL}/orders`;
+    const params = new URLSearchParams();
+
+    if (status) {
+      params.append('status', status);
+    }
+
+    // Si l'utilisateur n'est PAS admin, filtrer par ses propres commandes
+    if (userRole !== 'admin' && this.currentUser?.id) {
+      params.append('user_id', this.currentUser.id);
+    }
+
+    if (params.toString()) {
+      url += '?' + params.toString();
+    }
 
     const response = await fetch(url, {
       headers: this.getAuthHeaders()
@@ -2010,6 +2027,7 @@ CocaisseApp.prototype.loadOrders = async function() {
     this.toastError('Erreur lors du chargement des commandes');
   }
 };
+
 
 CocaisseApp.prototype.renderOrders = function() {
   const container = document.getElementById('ordersList');
@@ -2049,6 +2067,9 @@ CocaisseApp.prototype.renderOrders = function() {
     const itemsText = items.slice(0, 3).map(item => `${item.name} ×${item.quantity}`).join(', ');
     const moreItems = items.length > 3 ? ` +${items.length - 3} autres` : '';
 
+    // Vérifier si l'utilisateur est admin pour afficher le créateur
+    const isAdmin = this.currentUser?.role === 'admin';
+
     return `
       <div class="order-card" onclick="app.viewOrderDetail('${order.id}')">
         <div class="order-card-header">
@@ -2067,6 +2088,19 @@ CocaisseApp.prototype.renderOrders = function() {
 
         ${order.customer_name ? `
           <p class="text-xs text-gray-600 mb-2">👤 ${order.customer_name}${order.customer_phone ? ` - ${order.customer_phone}` : ''}</p>
+        ` : ''}
+
+        ${isAdmin ? `
+          <!-- Créateur de la commande (visible uniquement pour admin) -->
+          <div class="flex items-center gap-2 mb-2 bg-indigo-50 p-2 rounded-lg">
+            <div class="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+              ${(order.cashier_name || 'U').charAt(0).toUpperCase()}
+            </div>
+            <div class="flex-1">
+              <p class="text-xs text-gray-500">Créée par</p>
+              <p class="text-sm font-medium text-gray-800">${order.cashier_name || 'Inconnu'}</p>
+            </div>
+          </div>
         ` : ''}
 
         <div class="mb-3">
@@ -2519,6 +2553,62 @@ CocaisseApp.prototype.selectPaymentMethod = async function() {
       resolve(method);
     };
   });
+};
+
+CocaisseApp.prototype.editOrder = async function(orderId) {
+  try {
+    // Charger la commande
+    const response = await fetch(`${API_URL}/orders/${orderId}`, {
+      headers: this.getAuthHeaders()
+    });
+    const order = await response.json();
+
+    if (order.status !== 'draft') {
+      this.toastWarning('Seules les commandes en brouillon peuvent être modifiées');
+      return;
+    }
+
+    // Charger les articles dans le panier
+    const items = Array.isArray(order.items) ? order.items : JSON.parse(order.items || '[]');
+    this.cart = items.map(item => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      discount: 0
+    }));
+
+    this.currentDiscount = order.discount || 0;
+    this.updateCartDisplay();
+
+    // Fermer le modal de détail
+    this.closeModal('orderDetailModal');
+
+    // Ouvrir le modal d'édition avec les données pré-remplies
+    document.getElementById('orderId').value = order.id;
+    document.getElementById('orderType').value = order.order_type || 'dine_in';
+    document.getElementById('orderTableNumber').value = order.table_number || '';
+    document.getElementById('orderCustomerName').value = order.customer_name || '';
+    document.getElementById('orderCustomerPhone').value = order.customer_phone || '';
+    document.getElementById('orderNotes').value = order.notes || '';
+
+    // Preview des articles
+    const preview = document.getElementById('orderItemsPreview');
+    if (preview && this.cart.length > 0) {
+      preview.innerHTML = this.cart.map(item => `
+        <div class="flex items-center justify-between text-sm py-1">
+          <span class="text-gray-700">${item.name} ×${item.quantity}</span>
+          <span class="font-medium text-gray-800">${(item.price * item.quantity).toFixed(2)} €</span>
+        </div>
+      `).join('');
+    }
+
+    this.openModal('orderModal');
+    this.toastInfo('Modifiez les informations de la commande');
+  } catch (error) {
+    console.error('Error editing order:', error);
+    this.toastError('Erreur lors du chargement de la commande');
+  }
 };
 
 CocaisseApp.prototype.deleteOrder = async function(orderId) {

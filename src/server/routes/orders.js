@@ -61,13 +61,29 @@ router.get('/', async (req, res) => {
     const db = req.app.locals.db;
     const { status, order_type, table_number, start_date, end_date, limit = 100, offset = 0 } = req.query;
 
+    // Récupérer le rôle de l'utilisateur connecté
+    const currentUser = await db.get('SELECT role, username FROM users WHERE id = ?', [req.userId]);
+    const userRole = currentUser?.role || 'cashier';
+
+    console.log(`📋 [ORDERS GET] User: ${currentUser?.username || 'Unknown'} (${userRole}), ID: ${req.userId}`);
+
     let query = `
-      SELECT o.*, u.username as cashier_name
+      SELECT o.*, COALESCE(u.username, 'Utilisateur supprimé') as cashier_name
       FROM orders o
       LEFT JOIN users u ON o.created_by = u.id
       WHERE 1=1
     `;
     const params = [];
+
+    // Règle de gestion: Les caissiers ne voient que leurs propres commandes
+    // Les admins et managers voient toutes les commandes
+    if (userRole === 'cashier') {
+      console.log(`🔒 [ORDERS GET] Filtrage caissier - Affichage uniquement des commandes de: ${req.userId}`);
+      query += ' AND o.created_by = ?';
+      params.push(req.userId);
+    } else {
+      console.log(`🔓 [ORDERS GET] Mode admin/manager - Affichage de toutes les commandes`);
+    }
 
     if (status) {
       query += ' AND o.status = ?';
@@ -98,6 +114,10 @@ router.get('/', async (req, res) => {
     params.push(parseInt(limit), parseInt(offset));
 
     const orders = await db.all(query, params);
+    console.log(`📦 [ORDERS GET] Résultats: ${orders.length} commandes trouvées`);
+    if (orders.length > 0) {
+      console.log(`📦 [ORDERS GET] Première commande - Numéro: ${orders[0].order_number}, Créée par: ${orders[0].cashier_name}, ID créateur: ${orders[0].created_by}`);
+    }
     res.json(orders);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -109,7 +129,7 @@ router.get('/:id', async (req, res) => {
   try {
     const db = req.app.locals.db;
     const order = await db.get(`
-      SELECT o.*, u.username as cashier_name
+      SELECT o.*, COALESCE(u.username, 'Utilisateur supprimé') as cashier_name
       FROM orders o
       LEFT JOIN users u ON o.created_by = u.id
       WHERE o.id = ?

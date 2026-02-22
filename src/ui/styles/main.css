@@ -112,6 +112,33 @@ html, body {
   box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2);
 }
 
+/* Kitchen Section */
+#kitchen-section {
+  background: #f8fafc;
+}
+
+#kitchenOrdersList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  align-content: start;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+#kitchenOrdersList > div {
+  height: fit-content;
+}
+
+/* Animation urgence cuisine */
+@keyframes kitchenUrgent {
+  0%, 100% { border-color: #f87171; box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.2); }
+  50% { border-color: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.3); }
+}
+
+.kitchen-urgent {
+  animation: kitchenUrgent 1.5s ease-in-out infinite;
+}
+
 
 /* Product Cards */
 .product-card {

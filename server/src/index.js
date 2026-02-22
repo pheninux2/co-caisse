@@ -24,24 +24,34 @@ import settingsRoutes    from './routes/settings.js';
 const app  = express();
 const PORT = process.env.PORT || 5000;
 
-// ── CORS restreint ────────────────────────────────────────────────────────────
-// En dev  : ALLOWED_ORIGIN=http://localhost:3000
-// En prod : ALLOWED_ORIGIN=http://192.168.1.X:3000  (IP locale réseau)
+// ── CORS ──────────────────────────────────────────────────────────────────────
+// ALLOWED_ORIGIN accepte plusieurs origines séparées par des virgules
+// Ex : http://localhost:3000,http://192.168.1.8:3000
 const allowedOrigins = (process.env.ALLOWED_ORIGIN || 'http://localhost:3000')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 app.use(cors({
   origin: (origin, cb) => {
-    // Autoriser les requêtes sans origin (Electron, curl, Postman)
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    // Pas d'origin → Electron (file://), curl, Postman → toujours OK
+    if (!origin) return cb(null, true);
+    // En dev, accepte aussi toute origine localhost/* ou réseau local
+    if (isDev && (origin.includes('localhost') || origin.match(/^http:\/\/192\.168\./))) {
+      return cb(null, true);
+    }
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    console.warn(`[CORS] Origine refusée : ${origin}`);
     cb(new Error(`CORS : origine non autorisée → ${origin}`));
   },
-  methods:      ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods:        ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials:  true,
+  credentials:    true,
 }));
+
+console.log(`   CORS origines autorisées : ${allowedOrigins.join(', ')}${isDev ? ' + réseau local (dev)' : ''}`);
 
 // ── Body parsers ──────────────────────────────────────────────────────────────
 app.use(bodyParser.json({ limit: '50mb' }));

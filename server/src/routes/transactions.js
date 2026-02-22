@@ -15,42 +15,51 @@ router.post('/', async (req, res) => {
     const {
       items, subtotal, tax, discount, total,
       payment_method, payment_status,
-      change: changeAmount,   // alias pour éviter le conflit avec le mot réservé JS
+      change: changeAmount,
       notes,
     } = req.body;
 
-    if (!items || !total || !payment_method) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!items || total == null || !payment_method) {
+      return res.status(400).json({ error: 'Missing required fields: items, total, payment_method' });
     }
 
-    const id             = uuidv4();
-    const receipt_number = `REC-${Date.now()}`;
+    // Vérifier qu'aucune valeur n'est undefined (MariaDB strict)
+    const params = [
+      uuidv4(),                                    // id
+      req.userId,                                   // user_id (garanti par authMiddleware)
+      JSON.stringify(Array.isArray(items) ? items : []),
+      subtotal        != null ? Number(subtotal)       : 0,
+      tax             != null ? Number(tax)            : 0,
+      discount        != null ? Number(discount)       : 0,
+      Number(total),
+      payment_method,
+      payment_status  || 'completed',
+      changeAmount    != null ? Number(changeAmount)   : 0,
+      notes           !== undefined ? notes : null,
+      `REC-${Date.now()}`,
+    ];
+
+    // Vérification défensive : aucun undefined ne doit passer
+    const undefinedIdx = params.findIndex(p => p === undefined);
+    if (undefinedIdx !== -1) {
+      console.error('[transactions POST] param undefined à index', undefinedIdx, params);
+      return res.status(500).json({ error: `Param undefined at index ${undefinedIdx}` });
+    }
 
     await db.run(
       `INSERT INTO \`transactions\`
          (id, user_id, items, subtotal, tax, discount, total,
           payment_method, payment_status, \`change\`, notes, receipt_number)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id, req.userId,
-        JSON.stringify(items),
-        subtotal,
-        tax       || 0,
-        discount  || 0,
-        total,
-        payment_method,
-        payment_status || 'completed',
-        changeAmount   || 0,
-        notes,
-        receipt_number,
-      ]
+      params
     );
 
     const transaction = await db.get(
-      'SELECT * FROM `transactions` WHERE id = ?', [id]
+      'SELECT * FROM `transactions` WHERE id = ?', [params[0]]
     );
     res.status(201).json(transaction);
   } catch (error) {
+    console.error('[transactions POST] error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

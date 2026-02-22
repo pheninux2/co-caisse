@@ -1,0 +1,654 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #6366f1;
+  --primary-dark: #4f46e5;
+  --secondary: #64748b;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Navigation Tabs */
+.nav-tab {
+  @apply flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-white hover:text-gray-900 transition-all duration-200;
+}
+
+.nav-tab.active {
+  @apply bg-white text-indigo-600 shadow-sm;
+}
+
+/* Mobile Navigation */
+.mobile-nav-item {
+  @apply w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition text-left;
+}
+
+.mobile-nav-item.active {
+  @apply bg-indigo-50 text-indigo-600;
+}
+
+/* Category Buttons */
+.category-btn {
+  @apply px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-600 transition whitespace-nowrap flex-shrink-0;
+}
+
+.category-btn.active {
+  @apply bg-indigo-500 text-white;
+}
+
+/* Alert Animations pour commandes */
+@keyframes alertPulseOrange {
+  0%, 100% {
+    background-color: #fed7aa;
+    border-color: #fb923c;
+  }
+  50% {
+    background-color: #ffedd5;
+    border-color: #fdba74;
+  }
+}
+
+@keyframes alertPulseRed {
+  0%, 100% {
+    background-color: #fecaca;
+    border-color: #f87171;
+  }
+  50% {
+    background-color: #fee2e2;
+    border-color: #fca5a5;
+  }
+}
+
+.order-card-alert-warning {
+  animation: alertPulseOrange 3s ease-in-out infinite;
+  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.1);
+}
+
+.order-card-alert-critical {
+  animation: alertPulseRed 2s ease-in-out infinite;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2);
+}
+
+/* Kitchen Section */
+#kitchen-section {
+  background: #f8fafc;
+}
+
+#kitchenOrdersList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  align-content: start;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+#kitchenOrdersList > div {
+  height: fit-content;
+}
+
+/* Animation urgence cuisine */
+@keyframes kitchenUrgent {
+  0%, 100% { border-color: #f87171; box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.2); }
+  50% { border-color: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.3); }
+}
+
+.kitchen-urgent {
+  animation: kitchenUrgent 1.5s ease-in-out infinite;
+}
+
+
+/* Product Cards */
+.product-card {
+  @apply bg-white border border-gray-100 rounded-xl p-2 cursor-pointer hover:shadow-lg hover:border-indigo-300 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98];
+}
+
+.product-card-img {
+  @apply w-full aspect-square object-cover rounded-lg mb-1.5 bg-gray-100;
+}
+
+.product-card-name {
+  @apply text-xs font-semibold text-gray-800 truncate leading-tight;
+}
+
+.product-card-price {
+  @apply text-sm font-bold text-indigo-600 mt-0.5;
+}
+
+/* Cart Item */
+.cart-item {
+  @apply flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 hover:border-gray-200 transition;
+}
+
+/* Payment Methods */
+.payment-method {
+  @apply flex items-center justify-center gap-1.5 px-3 py-2.5 border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:border-indigo-300 transition-all duration-200;
+}
+
+.payment-method.active {
+  @apply border-indigo-500 bg-indigo-50 text-indigo-700;
+}
+
+/* Quick Action Buttons */
+.quick-action-btn {
+  @apply flex flex-col items-center justify-center gap-0.5 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition text-gray-600 hover:text-gray-800;
+}
+
+/* Stat Cards */
+.stat-card {
+  @apply flex items-center gap-3 p-4 rounded-xl text-white shadow-lg;
+}
+
+.stat-icon {
+  @apply text-2xl opacity-80;
+}
+
+.stat-label {
+  @apply text-xs opacity-80;
+}
+
+.stat-value {
+  @apply text-xl font-bold;
+}
+
+/* Settings Input */
+.settings-input {
+  @apply w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition;
+}
+
+/* Modal */
+.modal {
+  @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+}
+
+.modal.hidden {
+  display: none !important;
+}
+
+.modal-backdrop {
+  @apply absolute inset-0 bg-black/50 backdrop-blur-sm;
+}
+
+.modal-content {
+  @apply relative bg-white rounded-2xl shadow-2xl p-5 w-full mx-auto animate-modal-in;
+}
+
+.modal-input {
+  @apply w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-modal-in {
+  animation: modal-in 0.2s ease-out;
+}
+
+/* Calculator Buttons */
+.calc-btn {
+  @apply py-3 bg-gray-100 hover:bg-gray-200 rounded-lg font-bold text-gray-800 transition;
+}
+
+.calc-btn-op {
+  @apply py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-bold transition;
+}
+
+/* Category Card in Management */
+.category-card-item {
+  @apply flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition cursor-pointer;
+}
+
+/* Table Rows */
+tbody tr {
+  @apply hover:bg-gray-50 transition;
+}
+
+/* User Card in Settings */
+.user-card {
+  @apply flex items-center justify-between p-3 bg-gray-50 rounded-lg;
+}
+
+/* Badges */
+.badge {
+  @apply inline-block px-2 py-0.5 text-xs font-semibold rounded-full;
+}
+
+.badge-admin {
+  @apply bg-purple-100 text-purple-700;
+}
+
+.badge-manager {
+  @apply bg-blue-100 text-blue-700;
+}
+
+.badge-cashier {
+  @apply bg-green-100 text-green-700;
+}
+
+/* Action Buttons */
+.action-btn {
+  @apply p-1.5 rounded-lg hover:bg-gray-200 transition;
+}
+
+.action-btn-edit {
+  @apply text-indigo-500 hover:text-indigo-700;
+}
+
+.action-btn-delete {
+  @apply text-red-500 hover:text-red-700;
+}
+
+/* Transaction Item */
+.transaction-item {
+  @apply flex justify-between items-center p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition;
+}
+
+/* Loading Spinner */
+.spinner {
+  @apply inline-block w-5 h-5 border-2 border-gray-200 border-t-indigo-500 rounded-full animate-spin;
+}
+
+/* Print Styles */
+@media print {
+  body {
+    background: white !important;
+  }
+
+  #receiptContent {
+    width: 80mm !important;
+    font-size: 9pt !important;
+  }
+
+  .modal-backdrop,
+  .modal-content > div:last-child {
+    display: none !important;
+  }
+}
+
+/* ====== RESPONSIVE STYLES ====== */
+
+/* Mobile First - Default small screens */
+@media (max-width: 640px) {
+  /* Smaller product cards on mobile */
+  .product-card {
+    @apply p-1.5;
+  }
+
+  .product-card-name {
+    font-size: 0.65rem;
+  }
+
+  .product-card-price {
+    font-size: 0.75rem;
+  }
+
+  /* Compact cart on mobile */
+  .cart-item {
+    @apply p-1.5 gap-1;
+  }
+
+  /* Smaller stats on mobile */
+  .stat-card {
+    @apply p-2 gap-2;
+  }
+
+  .stat-value {
+    @apply text-base;
+  }
+
+  /* Modal fullscreen on mobile */
+  .modal-content {
+    @apply max-w-full mx-2 max-h-[90vh] overflow-y-auto;
+  }
+
+  /* History filters stacked */
+  #history-section .flex-wrap {
+    @apply flex-col items-stretch;
+  }
+
+  #history-section .ml-auto {
+    @apply ml-0 mt-2;
+  }
+}
+
+/* Tablet */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .product-card {
+    @apply p-2;
+  }
+
+  .modal-content {
+    @apply max-w-md;
+  }
+}
+
+/* Desktop layout fix */
+@media (max-width: 1024px) {
+  #pos-section {
+    flex-direction: column;
+  }
+
+  /* Cart takes less height on tablet/mobile */
+  #pos-section > div:last-child {
+    max-height: 40vh;
+  }
+}
+
+/* Large screens - full layout */
+@media (min-width: 1025px) {
+  #pos-section > div:last-child {
+    max-height: 100%;
+  }
+}
+
+/* Ensure full height sections */
+section[id$="-section"] {
+  @apply bg-gray-50;
+}
+
+/* Focus visible for accessibility */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  @apply outline-none ring-2 ring-indigo-500 ring-offset-2;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* ====== ADDITIONAL UI IMPROVEMENTS ====== */
+
+/* Better touch targets for mobile */
+@media (pointer: coarse) {
+  .quick-action-btn,
+  .payment-method,
+  .category-btn,
+  .action-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .product-card {
+    min-height: 80px;
+  }
+}
+
+/* Held cart badge pulse animation */
+#heldCartsBadge {
+  animation: pulse-badge 2s infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* Better table hover effect */
+tbody tr {
+  @apply hover:bg-indigo-50 transition cursor-pointer;
+}
+
+/* Gradient text for titles */
+.gradient-text {
+  @apply bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent;
+}
+
+/* Glass effect for modals */
+.glass-effect {
+  @apply bg-white/80 backdrop-blur-lg;
+}
+
+/* Better input focus */
+input:focus, select:focus, textarea:focus {
+  @apply ring-2 ring-indigo-500/50 border-indigo-500;
+}
+
+/* Smooth scroll for all scrollable areas */
+.overflow-y-auto, .overflow-x-auto {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ====== TOAST NOTIFICATIONS ====== */
+.toast {
+  @apply flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg pointer-events-auto min-w-[280px] max-w-[400px];
+  animation: toast-in 0.3s ease-out;
+}
+
+.toast-success {
+  @apply bg-gradient-to-r from-green-500 to-emerald-600 text-white;
+}
+
+.toast-error {
+  @apply bg-gradient-to-r from-red-500 to-rose-600 text-white;
+}
+
+.toast-warning {
+  @apply bg-gradient-to-r from-yellow-500 to-amber-600 text-white;
+}
+
+.toast-info {
+  @apply bg-gradient-to-r from-blue-500 to-indigo-600 text-white;
+}
+
+.toast-icon {
+  @apply text-2xl flex-shrink-0;
+}
+
+.toast-content {
+  @apply flex-1 min-w-0;
+}
+
+.toast-title {
+  @apply font-bold text-sm;
+}
+
+.toast-message {
+  @apply text-sm opacity-90;
+}
+
+.toast-close {
+  @apply p-1 rounded-lg hover:bg-white/20 transition flex-shrink-0 cursor-pointer;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.toast-exit {
+  animation: toast-out 0.3s ease-in forwards;
+}
+
+/* ====== CONFIRM DIALOG ====== */
+#confirmDialog .modal-content {
+  animation: confirm-in 0.2s ease-out;
+}
+
+@keyframes confirm-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.confirm-icon-success {
+  @apply bg-green-100 text-green-600;
+}
+
+.confirm-icon-error {
+  @apply bg-red-100 text-red-600;
+}
+
+.confirm-icon-warning {
+  @apply bg-yellow-100 text-yellow-600;
+}
+
+.confirm-icon-info {
+  @apply bg-blue-100 text-blue-600;
+}
+
+.confirm-icon-danger {
+  @apply bg-red-100 text-red-600;
+}
+
+#confirmDialog #confirmOk.btn-danger {
+  @apply bg-red-500 hover:bg-red-600;
+}
+
+#confirmDialog #confirmOk.btn-success {
+  @apply bg-green-500 hover:bg-green-600;
+}
+
+/* Order Filter Buttons */
+.order-filter-btn {
+  @apply px-4 py-2 text-sm font-medium rounded-lg bg-white text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition whitespace-nowrap border border-gray-200;
+}
+
+.order-filter-btn.active {
+  @apply bg-indigo-500 text-white border-indigo-500;
+}
+
+/* Order Card */
+.order-card {
+  @apply bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition cursor-pointer;
+}
+
+.order-card-header {
+  @apply flex items-center justify-between mb-3 pb-3 border-b border-gray-100;
+}
+
+.order-status-badge {
+  @apply px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide;
+}
+
+.order-status-draft {
+  @apply bg-gray-100 text-gray-600;
+}
+
+.order-status-validated {
+  @apply bg-blue-100 text-blue-700;
+}
+
+.order-status-in_kitchen {
+  @apply bg-orange-100 text-orange-700;
+}
+
+.order-status-ready {
+  @apply bg-green-100 text-green-700;
+}
+
+.order-status-served {
+  @apply bg-purple-100 text-purple-700;
+}
+
+.order-status-paid {
+  @apply bg-emerald-100 text-emerald-700;
+}
+
+.order-item {
+  @apply flex items-center justify-between py-2 text-sm;
+}
+
+.order-action-btn {
+  @apply px-3 py-1.5 text-xs font-medium rounded-lg transition;
+}
+
+.order-action-btn-primary {
+  @apply bg-indigo-500 hover:bg-indigo-600 text-white;
+}
+
+.order-action-btn-success {
+  @apply bg-green-500 hover:bg-green-600 text-white;
+}
+
+.order-action-btn-warning {
+  @apply bg-orange-500 hover:bg-orange-600 text-white;
+}
+
+.order-action-btn-danger {
+  @apply bg-red-500 hover:bg-red-600 text-white;
+}
+
+.order-action-btn-secondary {
+  @apply bg-gray-200 hover:bg-gray-300 text-gray-700;
+}

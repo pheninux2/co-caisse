@@ -211,30 +211,29 @@ class Database {
   }
 
   // ── Méthode run ────────────────────────────────
-  // Équivalent de db.run() SQLite
-  // Retourne { affectedRows, insertId } (mêmes noms que changes/lastID côté appli)
   async run(sql, params = []) {
-    const [result] = await this.pool.execute(sql, params);
+    // Remplace tous les undefined par null (MariaDB strict)
+    const safeParams = params.map(p => (p === undefined ? null : p));
+    const [result] = await this.pool.query(sql, safeParams);
     return {
       affectedRows: result.affectedRows,
       insertId:     result.insertId,
-      // Alias SQLite pour compatibilité éventuelle
       changes:      result.affectedRows,
       lastID:       result.insertId,
     };
   }
 
   // ── Méthode get ────────────────────────────────
-  // Retourne la première ligne ou undefined
   async get(sql, params = []) {
-    const [rows] = await this.pool.execute(sql, params);
+    const safeParams = params.map(p => (p === undefined ? null : p));
+    const [rows] = await this.pool.query(sql, safeParams);
     return rows[0] ?? undefined;
   }
 
   // ── Méthode all ────────────────────────────────
-  // Retourne toutes les lignes (jamais null)
   async all(sql, params = []) {
-    const [rows] = await this.pool.execute(sql, params);
+    const safeParams = params.map(p => (p === undefined ? null : p));
+    const [rows] = await this.pool.query(sql, safeParams);
     return rows || [];
   }
 

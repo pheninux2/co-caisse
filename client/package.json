@@ -1,41 +1,30 @@
 {
-  "name": "co-caisse",
-  "version": "1.0.0",
-  "description": "Application de gestion de caisse générique et configurable",
-  "main": "main.js",
+  "name": "co-caisse-client",
+  "version": "2.0.0",
+  "description": "Co-Caisse — Interface Electron + renderer Vanilla JS",
+  "main": "src/main.js",
   "homepage": "./",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "start": "electron .",
-    "dev": "concurrently \"npm run server\" \"npm run react-start\"",
-    "server": "node src/server/index.js",
-    "seed": "node src/server/database/seed.js",
-    "build": "npm run build-ui && npm run electron-build",
-    "build-ui": "webpack --mode production",
+    "dev": "concurrently \"npm run renderer\" \"npm run electron\"",
+    "renderer": "webpack serve --mode development --config webpack.config.js",
+    "electron": "wait-on http://localhost:3000 && electron .",
+    "build": "npm run build-renderer && npm run electron-build",
+    "build-renderer": "webpack --mode production --config webpack.config.js",
     "electron-build": "electron-builder",
-    "pack": "electron-builder --dir",
-    "dist": "npm run build-ui && electron-builder",
-    "dist:win": "npm run build-ui && electron-builder --win",
-    "dist:portable": "npm run build-ui && electron-builder --win portable",
-    "react-start": "webpack serve --mode development",
-    "test": "jest",
-    "lint": "eslint src/"
+    "dist:win": "npm run build-renderer && electron-builder --win",
+    "dist:portable": "npm run build-renderer && electron-builder --win portable"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "body-parser": "^1.20.2",
-    "cors": "^2.8.5",
     "dotenv": "^17.3.1",
-    "electron-is-dev": "^3.0.1",
-    "express": "^4.18.2",
-    "idb": "^8.0.0",
-    "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.17.4",
-    "sqlite3": "^5.1.6",
-    "uuid": "^9.0.0"
+    "electron-is-dev": "^3.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.23.0",
+    "@babel/plugin-proposal-class-properties": "^7.18.6",
+    "@babel/plugin-transform-class-properties": "^7.28.6",
+    "@babel/plugin-transform-private-methods": "^7.28.6",
     "@babel/preset-env": "^7.23.0",
     "autoprefixer": "^10.4.16",
     "babel-loader": "^9.1.3",
@@ -43,13 +32,12 @@
     "css-loader": "^7.1.3",
     "electron": "^27.0.0",
     "electron-builder": "^24.9.1",
-    "eslint": "^8.50.0",
     "html-webpack-plugin": "^5.5.3",
-    "jest": "^29.7.0",
     "postcss": "^8.4.31",
     "postcss-loader": "^8.2.0",
     "style-loader": "^4.0.0",
     "tailwindcss": "^3.3.0",
+    "wait-on": "^7.2.0",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4",
     "webpack-dev-server": "^4.15.1"
@@ -60,20 +48,9 @@
     "copyright": "Copyright © 2026 Co-Caisse",
     "files": [
       "dist/**/*",
-      "main.js",
-      "preload.js",
-      "package.json",
-      "src/server/**/*",
-      "src/data/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "src/data",
-        "to": "data",
-        "filter": [
-          "**/*"
-        ]
-      }
+      "src/main.js",
+      "src/preload.js",
+      "package.json"
     ],
     "directories": {
       "buildResources": "assets",

@@ -28,6 +28,25 @@ release/
 # Base de données (optionnel, à commenter si on veut tracker)
 # data/*.db
 
+# ── Nouvelle structure client/ server/ ────────────────────────────────────────
+# Fichiers .env — NE JAMAIS committer
+client/.env
+server/.env
+
+# node_modules des sous-projets
+client/node_modules/
+server/node_modules/
+
+# Dist des sous-projets
+client/dist/
+server/dist/
+
+# Données MariaDB / SQLite backup
+server/data/*.db
+server/data/*.db-journal
+server/data/*.db-wal
+server/data/*.db-shm
+
 # Cache
 .cache/
 .eslintcache

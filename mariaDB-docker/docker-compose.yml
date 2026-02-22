@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:11.2
+    container_name: co-caisse-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ../server/src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    networks:
+      - co-caisse-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  adminer:
+    image: adminer:4.8.1
+    container_name: co-caisse-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - co-caisse-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    profiles:
+      - tools
+
+volumes:
+  mariadb_data:
+    driver: local
+
+networks:
+  co-caisse-network:
+    driver: bridge

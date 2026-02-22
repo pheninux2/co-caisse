@@ -1,0 +1,63 @@
+# 1. Place les 4 fichiers à la racine de co-caisse/
+# 2. Copie et remplis le .env
+cp .env.docker.example .env
+
+# 3. Démarre MariaDB
+./docker-db.sh start        # Linux/macOS
+# ou sur Windows PowerShell :
+docker compose --env-file .env up -d mariadb
+
+# 4. Lance le seed
+cd server && node src/database/seed.js
+
+# 5. Bonus — interface web pour voir ta DB
+./docker-db.sh adminer      # → http://localhost:8080
+
+1. Démarre MariaDB
+bashcd mariaDB-docker
+./docker-db.sh start
+Attends le message ✅ MariaDB prêt avant de continuer.
+
+2. Lance le backend
+bashcd server
+npm run dev
+Tu dois voir : Server running on port 5000
+
+3. Lance le frontend
+bashcd client
+npm run dev
+Ça démarre webpack-dev-server sur le port 3000, puis Electron s'ouvre automatiquement.
+
+4. Remplis la BDD avec le seed
+Dans un nouveau terminal :
+bashcd server
+node src/database/seed.js
+Tu verras les mots de passe générés dans le terminal. Note-les.
+
+5. Tests à faire dans l'ordre
+Test 1 — Login API (vérifie que le back fonctionne)
+bashcurl -X POST http://localhost:5000/api/users/login \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"admin\",\"password\":\"Admin123!\"}"
+
+✅ Attendu : un objet JSON avec un token
+Test 2 — Route protégée sans token (doit rejeter)
+bashcurl http://localhost:5000/api/products
+
+✅ Attendu : 401 Unauthorized
+Test 3 — Route protégée avec token
+bash# Remplace TON_TOKEN par le token reçu au Test 1
+curl http://localhost:5000/api/products \
+  -H "Authorization: Bearer TON_TOKEN"
+
+✅ Attendu : liste des produits en JSON
+Test 4 — Interface Adminer (voir la BDD visuellement)
+bash./docker-db.sh adminer
+# Ouvre http://localhost:8080
+# Serveur: co-caisse-db
+# Utilisateur: cocaisse
+# Mot de passe: (celui dans server/.env)
+# Base: cocaisse
+
+En cas d'erreur fréquente
+ErreurCauseFixECONNREFUSED 3306MariaDB pas encore prêtAttends 10s et réessaie401 sur toutes les routesJWT_SECRET manquant dans .envVérifie server/.envElectron blancwebpack pas encore prêtAttends que le port 3000 soit upCannot find module mysql2npm install pas faitcd server && npm install

@@ -45,10 +45,13 @@ class CocaisseApp {
   async apiFetch(url, options = {}) {
     const headers = { ...this.getAuthHeaders(), ...(options.headers || {}) };
     const res = await fetch(url, { ...options, headers });
-    // Token expiré → retour sur le login
     if (res.status === 401) {
-      this.logout();
-      throw new Error('Session expirée, veuillez vous reconnecter');
+      // Lire le message serveur si disponible
+      const body = await res.json().catch(() => ({}));
+      const msg  = body.error || 'Session expirée — veuillez vous reconnecter';
+      this.toastError(msg);
+      setTimeout(() => this.logout(), 1500); // laisser le toast s'afficher
+      throw new Error(msg);
     }
     return res;
   }
@@ -1032,9 +1035,14 @@ class CocaisseApp {
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
 
+      // Lundi de la semaine courante (getDay() : 0=dim, 1=lun … 6=sam)
+      // (getDay() || 7) → dimanche devient 7, donc lundi = date - 6
       const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - today.getDay() + 1);
+      const dayOfWeek = today.getDay() || 7; // 1=lun … 7=dim
+      weekStart.setDate(today.getDate() - dayOfWeek + 1);
       const weekStartStr = weekStart.toISOString().split('T')[0];
+
+      console.log(`[PeriodStats] Semaine : ${weekStartStr} → ${todayStr}`);
 
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       const monthStartStr = monthStart.toISOString().split('T')[0];
@@ -1171,7 +1179,8 @@ class CocaisseApp {
       switch(period) {
         case 'week':
           const weekStart = new Date(today);
-          weekStart.setDate(today.getDate() - today.getDay() + 1);
+          const dow = today.getDay() || 7;
+          weekStart.setDate(today.getDate() - dow + 1);
           startDate = weekStart.toISOString().split('T')[0];
           periodName = 'Semaine';
           break;
@@ -1563,6 +1572,13 @@ class CocaisseApp {
     this.closeModal('discountModal');
   }
 
+  // Bug 2 — supprime la remise en cours
+  removeDiscount() {
+    this.currentDiscount = 0;
+    this.updateTotals();
+    this.toastInfo('Remise supprimée');
+  }
+
   openCalculator() {
     this.calculator = { value: '0', operation: null, operand: null };
     document.getElementById('calcDisplay').value = '0';
@@ -1799,7 +1815,6 @@ ${dash}
         alert_enabled: document.getElementById('alertEnabled')?.checked ? 1 : 0,
         alert_sound_enabled: document.getElementById('alertSoundEnabled')?.checked ? 1 : 0,
         alert_draft_minutes: parseInt(document.getElementById('alertDraftMinutes')?.value) || 15,
-        alert_validated_minutes: parseInt(document.getElementById('alertValidatedMinutes')?.value) || 10,
         alert_kitchen_minutes: parseInt(document.getElementById('alertKitchenMinutes')?.value) || 20,
         alert_ready_minutes: parseInt(document.getElementById('alertReadyMinutes')?.value) || 5,
         alert_served_minutes: parseInt(document.getElementById('alertServedMinutes')?.value) || 30,
@@ -1849,7 +1864,6 @@ ${dash}
           document.getElementById('alertEnabled').checked = settings.alert_enabled === 1;
           document.getElementById('alertSoundEnabled').checked = settings.alert_sound_enabled === 1;
           document.getElementById('alertDraftMinutes').value = settings.alert_draft_minutes || 15;
-          document.getElementById('alertValidatedMinutes').value = settings.alert_validated_minutes || 10;
           document.getElementById('alertKitchenMinutes').value = settings.alert_kitchen_minutes || 20;
           document.getElementById('alertReadyMinutes').value = settings.alert_ready_minutes || 5;
           document.getElementById('alertServedMinutes').value = settings.alert_served_minutes || 30;
@@ -1893,7 +1907,18 @@ ${dash}
 
   // ===== UTILITIES =====
   openModal(id) {
-    document.getElementById(id)?.classList.remove('hidden');
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    // Garantit le z-order au-dessus de tout
+    if (modal.parentElement !== document.body) document.body.appendChild(modal);
+    // Reforce l'animation pour qu'elle démarre immédiatement
+    const content = modal.querySelector('.modal-content');
+    if (content) {
+      content.style.animation = 'none';
+      void content.offsetHeight;
+      content.style.animation = '';
+    }
+    modal.classList.remove('hidden');
   }
 
   closeModal(id) {
@@ -2025,7 +2050,18 @@ ${dash}
       okBtn.addEventListener('click', handleConfirm);
       cancelBtn.addEventListener('click', handleCancel);
 
-      // Afficher le dialogue
+      // ── Afficher instantanément ───────────────────────────────────────────
+      // 1. S'assurer que la modal est appendée au body (z-order garanti)
+      if (dialog.parentElement !== document.body) {
+        document.body.appendChild(dialog);
+      }
+      // 2. Force un reflow pour relancer l'animation à chaque ouverture
+      const content = dialog.querySelector('.modal-content');
+      if (content) {
+        content.style.animation = 'none';
+        void content.offsetHeight; // reflow
+        content.style.animation = '';
+      }
       dialog.classList.remove('hidden');
     });
   }
@@ -2126,21 +2162,19 @@ CocaisseApp.prototype.renderOrders = function() {
   }
 
   const statusIcons = {
-    draft: '🆕',
-    validated: '✅',
+    draft:      '⏳',
     in_kitchen: '🔥',
-    ready: '✨',
-    served: '🍽️',
-    paid: '💰'
+    ready:      '✨',
+    served:     '🍽️',
+    paid:       '💰'
   };
 
   const statusLabels = {
-    draft: 'Brouillon',
-    validated: 'Validée',
+    draft:      'En attente de validation',
     in_kitchen: 'En cuisine',
-    ready: 'Prête',
-    served: 'Servie',
-    paid: 'Payée'
+    ready:      'Prête',
+    served:     'Servie',
+    paid:       'Payée'
   };
 
   const typeLabels = {
@@ -2345,12 +2379,11 @@ CocaisseApp.prototype.viewOrderDetail = async function(orderId) {
     const order = await response.json();
 
     const statusLabels = {
-      draft: 'Brouillon',
-      validated: 'Validée',
+      draft:      'En attente de validation',
       in_kitchen: 'En cuisine',
-      ready: 'Prête',
-      served: 'Servie',
-      paid: 'Payée'
+      ready:      'Prête',
+      served:     'Servie',
+      paid:       'Payée'
     };
 
     const typeLabels = {
@@ -2482,19 +2515,13 @@ CocaisseApp.prototype.viewOrderDetail = async function(orderId) {
         <div class="flex flex-wrap gap-2">
           ${order.status === 'draft' ? `
             <button onclick="app.validateOrder('${order.id}')" class="order-action-btn order-action-btn-primary">
-              ✅ Valider la commande
+              👨‍🍳 Valider & Envoyer en cuisine
             </button>
             <button onclick="app.editOrder('${order.id}')" class="order-action-btn order-action-btn-secondary">
               ✏️ Modifier
             </button>
             <button onclick="app.deleteOrder('${order.id}')" class="order-action-btn order-action-btn-danger">
               🗑️ Supprimer
-            </button>
-          ` : ''}
-
-          ${order.status === 'validated' ? `
-            <button onclick="app.sendToKitchen('${order.id}')" class="order-action-btn order-action-btn-warning">
-              🔥 Envoyer en cuisine
             </button>
           ` : ''}
 
@@ -2539,10 +2566,12 @@ CocaisseApp.prototype.viewOrderDetail = async function(orderId) {
 
 CocaisseApp.prototype.validateOrder = async function(orderId) {
   try {
-    const confirmed = await this.confirm('Valider cette commande ?', {
-      title: 'Validation',
-      icon: '✅',
-      type: 'info'
+    const confirmed = await this.confirm('Valider et envoyer en cuisine ?', {
+      title: 'Validation → Cuisine',
+      icon: '👨‍🍳',
+      type: 'info',
+      confirmText: 'Valider & Envoyer',
+      cancelText: 'Annuler'
     });
 
     if (!confirmed) return;
@@ -2553,7 +2582,7 @@ CocaisseApp.prototype.validateOrder = async function(orderId) {
     });
 
     if (!response.ok) throw new Error('Erreur lors de la validation');
-    this.toastSuccess('Commande validée !');
+    this.toastSuccess('Commande validée et envoyée en cuisine ! 👨‍🍳');
     this.closeModal('orderDetailModal');
     this.resetAlertForOrder(orderId);
     await this.loadOrders();
@@ -2706,7 +2735,7 @@ CocaisseApp.prototype.editOrder = async function(orderId) {
     const order = await response.json();
 
     if (order.status !== 'draft') {
-      this.toastWarning('Seules les commandes en brouillon peuvent être modifiées');
+      this.toastWarning('Seules les commandes en attente de validation peuvent être modifiées');
       return;
     }
 
@@ -2801,7 +2830,13 @@ CocaisseApp.prototype.stopAlertPolling = function() {
 // Calcule le nombre de minutes écoulées depuis status_since
 CocaisseApp.prototype._elapsedMin = function(status_since) {
   if (!status_since) return 0;
-  return Math.floor((Date.now() - new Date(status_since).getTime()) / 60000);
+  const since = new Date(status_since);
+  const now   = Date.now();
+  const diffMs = now - since.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  // Log de diagnostic (peut être retiré après validation)
+  // console.debug(`[elapsed] since=${status_since} → diffMs=${diffMs} → ${mins} min`);
+  return Math.max(0, mins);
 };
 
 // Calcule le retard réel (elapsed - seuil)
@@ -2912,12 +2947,19 @@ CocaisseApp.prototype.loadAlerts = async function() {
     if (!response.ok) return;
     const freshAlerts = await response.json();
 
-    // Stocker les données brutes du serveur (avec status_since et alert_threshold_minutes)
-    // Le calcul temps réel sera fait par _checkAndNotify()
-    this.alertsRaw = freshAlerts;
+    // Filtrer les alertes dont la commande a déjà changé de statut dans this.orders
+    // (évite qu'une alerte périmée réapparaisse si le serveur est légèrement en retard)
+    const filtered = freshAlerts.filter(alert => {
+      const localOrder = this.orders.find(o => o.id === alert.id);
+      // Si la commande est connue localement et a un statut différent → ignorer cette alerte
+      if (localOrder && localOrder.status !== alert.status) return false;
+      return true;
+    });
+
+    this.alertsRaw = filtered;
 
     // Nettoyer les IDs disparus de notifiedAlerts, notifiedLevels et dismissedAlerts
-    const currentIds = new Set(freshAlerts.map(a => a.id));
+    const currentIds = new Set(filtered.map(a => a.id));
     this.notifiedAlerts.forEach(id => {
       if (!currentIds.has(id)) {
         this.notifiedAlerts.delete(id);
@@ -2939,9 +2981,12 @@ CocaisseApp.prototype.resetAlertForOrder = function(orderId) {
   this.notifiedAlerts.delete(orderId);
   this.notifiedLevels.delete(orderId);
   this.dismissedAlerts.delete(orderId);
+  // Retirer immédiatement de alertsRaw et alerts pour stopper le clignotement
   if (this.alertsRaw) this.alertsRaw = this.alertsRaw.filter(a => a.id !== orderId);
   this.alerts = this.alerts.filter(a => a.id !== orderId);
-  this._refreshAlertDisplay();
+  // Mettre à jour badge + rendu immédiatement (sans re-fetch serveur — évite race condition)
+  this.updateAlertBadge(this.alerts.filter(a => !this.dismissedAlerts.has(a.id)).length);
+  if (this.currentSection === 'orders') this.renderOrders();
 };
 
 // ===== SECTION CUISINE =====
@@ -3355,12 +3400,11 @@ CocaisseApp.prototype.showOrdersStatistics = async function() {
           <div class="grid grid-cols-2 gap-3">
             ${stats.status_stats.map(stat => {
               const statusLabels = {
-                draft: { label: 'Brouillons', icon: '📝', color: 'gray' },
-                validated: { label: 'Validées', icon: '✅', color: 'green' },
+                draft:      { label: 'En attente', icon: '⏳', color: 'gray' },
                 in_kitchen: { label: 'En cuisine', icon: '👨‍🍳', color: 'blue' },
-                ready: { label: 'Prêtes', icon: '🔔', color: 'purple' },
-                served: { label: 'Servies', icon: '🍽️', color: 'indigo' },
-                paid: { label: 'Payées', icon: '💰', color: 'emerald' }
+                ready:      { label: 'Prêtes',     icon: '🔔', color: 'purple' },
+                served:     { label: 'Servies',    icon: '🍽️', color: 'indigo' },
+                paid:       { label: 'Payées',     icon: '💰', color: 'emerald' }
               };
               const info = statusLabels[stat.status] || { label: stat.status, icon: '•', color: 'gray' };
               
@@ -3381,11 +3425,10 @@ CocaisseApp.prototype.showOrdersStatistics = async function() {
           <div class="space-y-2">
             ${stats.time_stats.map(stat => {
               const transitionLabels = {
-                'draft_to_validated': 'Brouillon → Validation',
-                'validated_to_kitchen': 'Validation → Cuisine',
-                'kitchen_to_ready': 'Cuisine → Prête',
-                'ready_to_served': 'Prête → Servie',
-                'served_to_paid': 'Servie → Payée'
+                'draft_to_validated':   'En attente → Cuisine',
+                'kitchen_to_ready':     'Cuisine → Prête',
+                'ready_to_served':      'Prête → Servie',
+                'served_to_paid':       'Servie → Payée'
               };
               
               const avgMin = Math.round(stat.avg_minutes || 0);

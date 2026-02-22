@@ -26,12 +26,34 @@ router.post('/', async (req, res) => {
       customer_name, customer_phone, notes,
     } = req.body;
 
-    if (!items || !total) {
+    if (!items || total == null) {
       return res.status(400).json({ error: 'Missing required fields: items, total' });
+    }
+
+    // Vérifie que l'utilisateur du token existe toujours en DB (évite FK violation)
+    const userExists = await db.get('SELECT id FROM `users` WHERE id = ?', [req.userId]);
+    if (!userExists) {
+      return res.status(401).json({ error: 'Session expirée — veuillez vous reconnecter' });
     }
 
     const id           = uuidv4();
     const order_number = generateOrderNumber();
+
+    const params = [
+      id,
+      order_number,
+      table_number    || null,
+      order_type      || 'dine_in',
+      JSON.stringify(Array.isArray(items) ? items : []),
+      subtotal        != null ? Number(subtotal)  : 0,
+      tax             != null ? Number(tax)       : 0,
+      discount        != null ? Number(discount)  : 0,
+      Number(total),
+      customer_name   || null,
+      customer_phone  || null,
+      notes           || null,
+      req.userId,
+    ];
 
     await db.run(
       `INSERT INTO \`orders\` (
@@ -40,16 +62,13 @@ router.post('/', async (req, res) => {
          customer_name, customer_phone, notes,
          created_by, created_at
        ) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        id, order_number, table_number, order_type,
-        JSON.stringify(items), subtotal, tax || 0, discount || 0, total,
-        customer_name, customer_phone, notes, req.userId,
-      ]
+      params
     );
 
     const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [id]);
     res.status(201).json(order);
   } catch (error) {
+    console.error('[orders POST]', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -165,7 +184,7 @@ router.get('/alerts/pending', async (req, res) => {
       SELECT o.*, COALESCE(u.username, 'Inconnu') AS cashier_name
       FROM \`orders\` o
       LEFT JOIN \`users\` u ON o.created_by = u.id
-      WHERE o.status IN ('draft','validated','in_kitchen','ready','served')
+      WHERE o.status IN ('draft','in_kitchen','ready','served')
     `;
     const queryParams = [];
 
@@ -184,15 +203,10 @@ router.get('/alerts/pending', async (req, res) => {
         case 'draft':
           statusDateStr = order.created_at;
           alertMinutes  = settings.alert_draft_minutes || 15;
-          statusLabel   = 'Brouillon';
-          break;
-        case 'validated':
-          statusDateStr = order.validated_at || order.created_at;
-          alertMinutes  = settings.alert_validated_minutes || 10;
-          statusLabel   = 'Validée';
+          statusLabel   = 'En attente de validation';
           break;
         case 'in_kitchen':
-          statusDateStr = order.kitchen_at || order.validated_at || order.created_at;
+          statusDateStr = order.kitchen_at || order.created_at;
           alertMinutes  = settings.alert_kitchen_minutes || 20;
           statusLabel   = 'En cuisine';
           break;
@@ -210,10 +224,16 @@ router.get('/alerts/pending', async (req, res) => {
           return null;
       }
 
-      // MariaDB retourne déjà des objets Date ou des chaînes ISO — normalisation
-      const isoDate = statusDateStr instanceof Date
-        ? statusDateStr.toISOString()
-        : String(statusDateStr).replace(' ', 'T');
+      // MariaDB avec timezone:'local' retourne des objets Date JS déjà en UTC.
+      // Si c'est une string (cas rare), on la traite comme heure locale → on NE met pas Z.
+      let isoDate;
+      if (statusDateStr instanceof Date) {
+        isoDate = statusDateStr.toISOString(); // UTC correct, avec Z
+      } else {
+        // String locale "YYYY-MM-DD HH:MM:SS" → on crée un Date en heure locale
+        const localDate = new Date(String(statusDateStr).replace(' ', 'T'));
+        isoDate = localDate.toISOString(); // convertit en UTC avec Z
+      }
 
       return {
         id:                      order.id,
@@ -376,7 +396,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ── POST /:id/validate — draft → validated ────────────────────────────────────
+// ── POST /:id/validate — draft → in_kitchen (validation + envoi cuisine en 1 étape) ──
 router.post('/:id/validate', async (req, res) => {
   try {
     const db    = req.app.locals.db;
@@ -387,8 +407,9 @@ router.post('/:id/validate', async (req, res) => {
       return res.status(400).json({ error: 'Order must be in draft status' });
     }
 
+    // Validation + envoi cuisine en une seule opération
     await db.run(
-      "UPDATE `orders` SET status = 'validated', validated_at = NOW() WHERE id = ?",
+      "UPDATE `orders` SET status = 'in_kitchen', validated_at = NOW(), kitchen_at = NOW() WHERE id = ?",
       [req.params.id]
     );
 
@@ -399,27 +420,9 @@ router.post('/:id/validate', async (req, res) => {
   }
 });
 
-// ── POST /:id/send-to-kitchen — validated → in_kitchen ───────────────────────
+// ── POST /:id/send-to-kitchen — DÉSACTIVÉ (validate envoie directement en cuisine) ──
 router.post('/:id/send-to-kitchen', async (req, res) => {
-  try {
-    const db    = req.app.locals.db;
-    const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [req.params.id]);
-
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.status !== 'validated') {
-      return res.status(400).json({ error: 'Order must be validated first' });
-    }
-
-    await db.run(
-      "UPDATE `orders` SET status = 'in_kitchen', kitchen_at = NOW() WHERE id = ?",
-      [req.params.id]
-    );
-
-    const updated = await db.get('SELECT * FROM `orders` WHERE id = ?', [req.params.id]);
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  return res.status(400).json({ error: 'La validation envoie directement en cuisine. Cette route n\'est plus utilisée.' });
 });
 
 // ── POST /:id/mark-ready — in_kitchen → ready (cook/admin uniquement) ─────────

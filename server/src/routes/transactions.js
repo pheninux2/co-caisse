@@ -23,6 +23,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: items, total, payment_method' });
     }
 
+    // Vérifie que l'utilisateur du token existe toujours en DB (évite FK violation)
+    const userExists = await db.get('SELECT id FROM `users` WHERE id = ?', [req.userId]);
+    if (!userExists) {
+      return res.status(401).json({ error: 'Session expirée — veuillez vous reconnecter' });
+    }
+
     // Vérifier qu'aucune valeur n'est undefined (MariaDB strict)
     const params = [
       uuidv4(),                                    // id

@@ -112,6 +112,8 @@ class Database {
             customer_name TEXT,
             customer_phone TEXT,
             notes TEXT,
+            kitchen_comment TEXT,
+            kitchen_handlers TEXT DEFAULT '[]',
             created_by TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             validated_at DATETIME,
@@ -178,6 +180,9 @@ class Database {
         `, (err) => {
           if (err) reject(err);
           else {
+            // Migration : ajouter les colonnes cuisine si elles n'existent pas
+            this.db.run(`ALTER TABLE orders ADD COLUMN kitchen_comment TEXT`, () => {});
+            this.db.run(`ALTER TABLE orders ADD COLUMN kitchen_handlers TEXT DEFAULT '[]'`, () => {});
             console.log('✅ All tables created/verified');
             resolve();
           }

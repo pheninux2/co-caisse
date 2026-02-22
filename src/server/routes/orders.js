@@ -61,11 +61,8 @@ router.get('/', async (req, res) => {
     const db = req.app.locals.db;
     const { status, order_type, table_number, start_date, end_date, limit = 100, offset = 0 } = req.query;
 
-    // Récupérer le rôle de l'utilisateur connecté
     const currentUser = await db.get('SELECT role, username FROM users WHERE id = ?', [req.userId]);
     const userRole = currentUser?.role || 'cashier';
-
-    console.log(`📋 [ORDERS GET] User: ${currentUser?.username || 'Unknown'} (${userRole}), ID: ${req.userId}`);
 
     let query = `
       SELECT o.*, COALESCE(u.username, 'Utilisateur supprimé') as cashier_name
@@ -75,49 +72,43 @@ router.get('/', async (req, res) => {
     `;
     const params = [];
 
-    // Règle de gestion: Les caissiers ne voient que leurs propres commandes
-    // Les admins et managers voient toutes les commandes
+    // Règle de gestion: caissiers ne voient que leurs commandes
     if (userRole === 'cashier') {
-      console.log(`🔒 [ORDERS GET] Filtrage caissier - Affichage uniquement des commandes de: ${req.userId}`);
       query += ' AND o.created_by = ?';
       params.push(req.userId);
-    } else {
-      console.log(`🔓 [ORDERS GET] Mode admin/manager - Affichage de toutes les commandes`);
+    }
+    // Le cuisinier voit toutes les commandes en cuisine + prêtes
+    if (userRole === 'cook') {
+      query += ` AND o.status IN ('in_kitchen', 'ready')`;
     }
 
-    if (status) {
-      query += ' AND o.status = ?';
-      params.push(status);
-    }
-
-    if (order_type) {
-      query += ' AND o.order_type = ?';
-      params.push(order_type);
-    }
-
-    if (table_number) {
-      query += ' AND o.table_number = ?';
-      params.push(table_number);
-    }
-
-    if (start_date) {
-      query += ' AND DATE(o.created_at) >= ?';
-      params.push(start_date);
-    }
-
-    if (end_date) {
-      query += ' AND DATE(o.created_at) <= ?';
-      params.push(end_date);
-    }
+    if (status) { query += ' AND o.status = ?'; params.push(status); }
+    if (order_type) { query += ' AND o.order_type = ?'; params.push(order_type); }
+    if (table_number) { query += ' AND o.table_number = ?'; params.push(table_number); }
+    if (start_date) { query += ' AND DATE(o.created_at) >= ?'; params.push(start_date); }
+    if (end_date) { query += ' AND DATE(o.created_at) <= ?'; params.push(end_date); }
 
     query += ' ORDER BY o.created_at DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
 
     const orders = await db.all(query, params);
-    console.log(`📦 [ORDERS GET] Résultats: ${orders.length} commandes trouvées`);
-    if (orders.length > 0) {
-      console.log(`📦 [ORDERS GET] Première commande - Numéro: ${orders[0].order_number}, Créée par: ${orders[0].cashier_name}, ID créateur: ${orders[0].created_by}`);
-    }
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Route dédiée cuisine : commandes in_kitchen triées du plus ancien au plus récent
+router.get('/kitchen/active', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const orders = await db.all(`
+      SELECT o.*, COALESCE(u.username, 'Inconnu') as cashier_name
+      FROM orders o
+      LEFT JOIN users u ON o.created_by = u.id
+      WHERE o.status = 'in_kitchen'
+      ORDER BY o.kitchen_at ASC, o.created_at ASC
+    `);
     res.json(orders);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -268,18 +259,21 @@ router.post('/:id/send-to-kitchen', async (req, res) => {
 });
 
 // Marquer comme prête (in_kitchen → ready)
+// Marquer comme prête (in_kitchen → ready) — cuisinier et admin seulement
 router.post('/:id/mark-ready', async (req, res) => {
   try {
     const db = req.app.locals.db;
+
+    // Vérification du rôle
+    const user = await db.get('SELECT role FROM users WHERE id = ?', [req.userId]);
+    const userRole = user?.role || req.role;
+    if (!['admin', 'cook'].includes(userRole)) {
+      return res.status(403).json({ error: 'Seul un cuisinier ou un admin peut marquer une commande comme prête' });
+    }
+
     const order = await db.get('SELECT * FROM orders WHERE id = ?', [req.params.id]);
-
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    if (order.status !== 'in_kitchen') {
-      return res.status(400).json({ error: 'Order must be in kitchen' });
-    }
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'in_kitchen') return res.status(400).json({ error: 'Order must be in kitchen' });
 
     await db.run(
       `UPDATE orders SET status = 'ready', ready_at = datetime('now', 'localtime') WHERE id = ?`,
@@ -288,6 +282,68 @@ router.post('/:id/mark-ready', async (req, res) => {
 
     const updatedOrder = await db.get('SELECT * FROM orders WHERE id = ?', [req.params.id]);
     res.json(updatedOrder);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Prise en charge d'une commande par un cuisinier
+router.post('/:id/kitchen-handle', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+
+    const user = await db.get('SELECT id, username, role FROM users WHERE id = ?', [req.userId]);
+    if (!user || !['admin', 'cook'].includes(user.role)) {
+      return res.status(403).json({ error: 'Seul un cuisinier ou admin peut prendre en charge une commande' });
+    }
+
+    const order = await db.get('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'in_kitchen') return res.status(400).json({ error: 'Order must be in kitchen' });
+
+    // Ajouter le cuisinier à la liste des handlers (sans doublon)
+    let handlers = [];
+    try { handlers = JSON.parse(order.kitchen_handlers || '[]'); } catch { handlers = []; }
+
+    const alreadyHandling = handlers.find(h => h.id === user.id);
+    if (!alreadyHandling) {
+      handlers.push({ id: user.id, username: user.username, taken_at: new Date().toISOString() });
+      await db.run(
+        `UPDATE orders SET kitchen_handlers = ? WHERE id = ?`,
+        [JSON.stringify(handlers), req.params.id]
+      );
+    }
+
+    const updatedOrder = await db.get('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    res.json({ ...updatedOrder, kitchen_handlers: handlers });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Ajouter/modifier un commentaire cuisinier
+router.post('/:id/kitchen-comment', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+
+    const user = await db.get('SELECT role FROM users WHERE id = ?', [req.userId]);
+    if (!user || !['admin', 'cook'].includes(user.role)) {
+      return res.status(403).json({ error: 'Seul un cuisinier ou admin peut commenter' });
+    }
+
+    const { comment } = req.body;
+    const order = await db.get('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!['in_kitchen', 'ready'].includes(order.status)) {
+      return res.status(400).json({ error: 'La commande doit être en cuisine ou prête pour ajouter un commentaire' });
+    }
+
+    await db.run(
+      `UPDATE orders SET kitchen_comment = ? WHERE id = ?`,
+      [comment || null, req.params.id]
+    );
+
+    res.json({ success: true, kitchen_comment: comment });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

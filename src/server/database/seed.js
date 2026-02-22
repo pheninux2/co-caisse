@@ -232,10 +232,11 @@ async function seedDatabase() {
     // Insert Users
     console.log('Inserting users...');
     const users = [
-      { id: uuidv4(), username: 'admin', password: 'admin123', email: 'admin@cocaisse.fr', role: 'admin' },
-      { id: uuidv4(), username: 'manager', password: 'manager123', email: 'manager@cocaisse.fr', role: 'manager' },
-      { id: uuidv4(), username: 'cashier1', password: 'cashier123', email: 'cashier1@cocaisse.fr', role: 'cashier' },
-      { id: uuidv4(), username: 'cashier2', password: 'cashier123', email: 'cashier2@cocaisse.fr', role: 'cashier' }
+      { id: uuidv4(), username: 'admin',    password: 'admin123',    email: 'admin@cocaisse.fr',    role: 'admin' },
+      { id: uuidv4(), username: 'manager',  password: 'manager123',  email: 'manager@cocaisse.fr',  role: 'manager' },
+      { id: uuidv4(), username: 'cashier1', password: 'cashier123',  email: 'cashier1@cocaisse.fr', role: 'cashier' },
+      { id: uuidv4(), username: 'cashier2', password: 'cashier123',  email: 'cashier2@cocaisse.fr', role: 'cashier' },
+      { id: uuidv4(), username: 'cook1',    password: 'cook123',     email: 'cook1@cocaisse.fr',    role: 'cook' },
     ];
 
     for (const user of users) {

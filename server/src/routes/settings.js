@@ -1,4 +1,5 @@
 import express from 'express';
+import { roleCheck } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -37,8 +38,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Sauvegarder les paramètres
-router.post('/', async (req, res) => {
+// Sauvegarder les paramètres — admin uniquement
+router.post('/', roleCheck(['admin']), async (req, res) => {
   try {
     const db = req.app.locals.db;
     const {

@@ -65,15 +65,18 @@ class CocaisseApp {
       this.settings = JSON.parse(savedSettings);
     }
 
-    // Restaurer le token JWT depuis localStorage
+    // ── 1. Vérification licence AVANT tout ──────────────────────────────
+    const licenceOk = await this._checkLicence();
+    if (!licenceOk) return; // l'écran licence est affiché, on s'arrête
+
+    // ── 2. Restaurer la session JWT ──────────────────────────────────────
     const savedToken = localStorage.getItem('jwt_token');
     const savedUser  = localStorage.getItem('currentUser');
 
     if (savedToken && savedUser) {
       try {
-        _jwtToken = savedToken; // restaurer en mémoire
+        _jwtToken = savedToken;
 
-        // Vérifier que le token est encore valide via /me
         const checkRes = await this.apiFetch(`${API_URL}/users/me`, {
           headers: {
             'Content-Type':  'application/json',
@@ -88,14 +91,12 @@ class CocaisseApp {
           console.log('👤 Session restaurée:', freshUser.username, '(' + freshUser.role + ')');
           this.showMainApp();
         } else if (checkRes.status === 401) {
-          // Token expiré ou invalide → reconnexion
           console.log('⚠️ Token expiré, reconnexion requise');
           localStorage.removeItem('jwt_token');
           localStorage.removeItem('currentUser');
           _jwtToken = null;
           this.showLoginScreen();
         } else {
-          // Erreur serveur → conserver la session locale
           console.warn('⚠️ Serveur inaccessible, session locale conservée');
           this.currentUser = JSON.parse(savedUser);
           this.showMainApp();
@@ -118,6 +119,259 @@ class CocaisseApp {
     }
   }
 
+  // ── Vérification de la licence au démarrage ───────────────────────────────
+  // Retourne true  → la licence est OK, on peut continuer
+  // Retourne false → l'écran licence est affiché, init s'arrête
+  async _checkLicence() {
+    try {
+      const res  = await fetch(`${API_URL}/licences/status`);
+      const data = await res.json();
+
+      this.licenceStatus = data; // stocker pour usage ultérieur
+
+      // ── Cas 1 : Aucune licence ───────────────────────────────────────
+      if (!data.hasLicence) {
+        this._showLicenceScreen('welcome');
+        return false;
+      }
+
+      // ── Cas 2 : Trial expiré ─────────────────────────────────────────
+      if (!data.valid && data.type === 'trial') {
+        this._showLicenceScreen('trial_expired');
+        return false;
+      }
+
+      // ── Cas 3 : Licence expirée / suspendue ──────────────────────────
+      if (!data.valid) {
+        this._showLicenceScreen('expired');
+        return false;
+      }
+
+      // ── Cas 4 : Trial actif → bandeau discret ────────────────────────
+      if (data.valid && data.type === 'trial') {
+        this._showTrialBanner(data.daysRemaining);
+      }
+
+      // ── Cas 5 : Licence active (perpetual/subscription) → rien ───────
+      return true;
+
+    } catch (e) {
+      // Serveur inaccessible → on laisse passer (fail open)
+      console.warn('[licence] Serveur inaccessible — bypass licence check');
+      return true;
+    }
+  }
+
+  // ── Affiche l'écran licence avec le bon contenu ───────────────────────────
+  _showLicenceScreen(mode) {
+    const screen  = document.getElementById('licenceScreen');
+    const content = document.getElementById('licenceContent');
+    if (!screen || !content) return;
+
+    if (mode === 'welcome') {
+      content.innerHTML = `
+        <p class="text-gray-600 mb-6 text-sm leading-relaxed">
+          Bienvenue ! Démarrez votre essai gratuit de <strong>30 jours</strong><br>
+          ou entrez votre clé de licence si vous en avez une.
+        </p>
+        <div class="space-y-3">
+          <button onclick="app.startTrial()"
+            class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl transition shadow-md">
+            🚀 Démarrer l'essai gratuit 30 jours
+          </button>
+          <button onclick="app._showLicenceScreen('activate')"
+            class="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition">
+            🔑 Entrer une clé de licence
+          </button>
+        </div>
+        <p class="text-xs text-gray-400 mt-4">Module caisse inclus pendant l'essai</p>
+      `;
+    } else if (mode === 'trial_expired') {
+      content.innerHTML = `
+        <div class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span class="text-3xl">⏰</span>
+        </div>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">Essai expiré</h2>
+        <p class="text-gray-600 mb-6 text-sm leading-relaxed">
+          Votre essai gratuit de 30 jours est terminé.<br>
+          Activez votre licence pour continuer à utiliser Co-Caisse.
+        </p>
+        <div class="space-y-3">
+          <button onclick="app._showLicenceScreen('activate')"
+            class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl transition shadow-md">
+            🔑 Activer ma licence
+          </button>
+          <button onclick="app._openMail('Activation licence Co-Caisse', 'Bonjour,\n\nJe souhaite activer ma licence Co-Caisse.\n\nMerci.')"
+            class="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition text-sm">
+            📧 Contacter le support
+          </button>
+        </div>
+      `;
+    } else if (mode === 'expired') {
+      content.innerHTML = `
+        <div class="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span class="text-3xl">⚠️</span>
+        </div>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">Licence expirée</h2>
+        <p class="text-gray-600 mb-6 text-sm leading-relaxed">
+          Votre licence a expiré ou a été suspendue.<br>
+          Contactez-nous pour la renouveler.
+        </p>
+        <div class="space-y-3">
+          <button onclick="app._showLicenceScreen('activate')"
+            class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl transition shadow-md">
+            🔑 Entrer une nouvelle clé
+          </button>
+          <button onclick="app._openMail('Renouvellement licence Co-Caisse', 'Bonjour,\n\nMa licence Co-Caisse a expiré. Je souhaite la renouveler.\n\nMerci.')"
+            class="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition text-sm">
+            📧 Contacter le support
+          </button>
+        </div>
+      `;
+    } else if (mode === 'activate') {
+      content.innerHTML = `
+        <h2 class="text-xl font-bold text-gray-800 mb-4">Activer une licence</h2>
+        <div class="mb-4 text-left">
+          <label class="block text-xs font-semibold text-gray-600 mb-1">Clé de licence</label>
+          <input type="text" id="licenceKeyInput"
+            placeholder="CCZ-XXXX-XXXX-XXXX"
+            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono tracking-wider uppercase"
+            oninput="this.value = this.value.toUpperCase()">
+        </div>
+        <div class="space-y-3">
+          <button onclick="app.activateLicenceKey()"
+            class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl transition shadow-md">
+            ✅ Activer
+          </button>
+          <button onclick="app._showLicenceScreen('welcome')"
+            class="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition text-sm">
+            ← Retour
+          </button>
+        </div>
+        <div id="licenceActivateError" class="hidden mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-xs"></div>
+      `;
+    }
+
+    screen.classList.remove('hidden');
+  }
+
+  // ── Affiche le bandeau trial ──────────────────────────────────────────────
+  _showTrialBanner(daysRemaining) {
+    const banner = document.getElementById('trialBanner');
+    const text   = document.getElementById('trialBannerText');
+    if (!banner || !text) return;
+
+    const label = daysRemaining === 1
+      ? '⏳ Essai gratuit — 1 jour restant'
+      : `⏳ Essai gratuit — ${daysRemaining} jours restants`;
+
+    text.textContent = label;
+    banner.classList.remove('hidden');
+
+    // Décale le header de l'app pour ne pas qu'il soit masqué
+    const header = document.querySelector('#app header');
+    if (header) header.style.marginTop = '28px';
+  }
+
+  // ── Démarre l'essai gratuit ───────────────────────────────────────────────
+  async startTrial() {
+    const btn = document.querySelector('#licenceContent button');
+    if (btn) { btn.disabled = true; btn.textContent = 'Démarrage...'; }
+
+    try {
+      const res  = await fetch(`${API_URL}/licences/trial`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await res.json();
+
+      if (data.success) {
+        this.licenceStatus = await (await fetch(`${API_URL}/licences/status`)).json();
+        this._showTrialBanner(data.daysRemaining);
+        document.getElementById('licenceScreen').classList.add('hidden');
+        this.showLoginScreen();
+      } else {
+        this._showLicenceError(data.error || 'Impossible de démarrer l\'essai');
+      }
+    } catch (e) {
+      this._showLicenceError('Erreur serveur — réessayez');
+    }
+  }
+
+  // ── Active une clé de licence ─────────────────────────────────────────────
+  async activateLicenceKey() {
+    const input = document.getElementById('licenceKeyInput');
+    const key   = input?.value?.trim();
+
+    if (!key || key.length < 14) {
+      this._showLicenceError('Clé invalide — format attendu : CCZ-XXXX-XXXX-XXXX');
+      return;
+    }
+
+    const btn = document.querySelector('#licenceContent button');
+    if (btn) { btn.disabled = true; btn.textContent = 'Activation...'; }
+
+    try {
+      const res  = await fetch(`${API_URL}/licences/activate`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ key }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        this.licenceStatus = data.status;
+        document.getElementById('licenceScreen').classList.add('hidden');
+        if (data.status?.type === 'trial') {
+          this._showTrialBanner(data.status.daysRemaining);
+        }
+        this.showLoginScreen();
+        this.toastSuccess('Licence activée avec succès !');
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Activer'; }
+        this._showLicenceError(data.error || 'Activation échouée');
+      }
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = '✅ Activer'; }
+      this._showLicenceError('Erreur serveur — réessayez');
+    }
+  }
+
+  // ── Affiche une erreur dans l'écran licence ───────────────────────────────
+  _showLicenceError(message) {
+    const el = document.getElementById('licenceActivateError');
+    if (el) {
+      el.textContent = '⚠️ ' + message;
+      el.classList.remove('hidden');
+    } else {
+      this.toastError(message);
+    }
+  }
+
+  // ── Ouvre le client mail (compatible Electron + navigateur) ──────────────
+  // Dans Electron, window.open('mailto:') ouvre Google. On passe par
+  // l'API shell.openExternal via preload si disponible, sinon on affiche
+  // l'adresse dans un toast pour que l'utilisateur la copie.
+  _openMail(subject = '', body = '') {
+    const email   = 'contact@co-caisse.fr';
+    const encoded = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    // Electron via preload bridge
+    if (window.api && typeof window.api.openExternal === 'function') {
+      window.api.openExternal(encoded);
+      return;
+    }
+
+    // Navigateur standard
+    const a = document.createElement('a');
+    a.href   = encoded;
+    a.target = '_blank';
+    a.rel    = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Affiche aussi l'adresse en toast au cas où rien ne s'ouvre
+    this.toastInfo(`📧 ${email} — copiez cette adresse si le client mail ne s'ouvre pas`);
+  }
+
   showLoginScreen() {
     const loginScreen = document.getElementById('loginScreen');
     const appDiv = document.getElementById('app');
@@ -133,7 +387,18 @@ class CocaisseApp {
     if (loginScreen) loginScreen.classList.add('hidden');
     if (appDiv) appDiv.classList.remove('hidden');
 
-    // Filtrer les onglets selon le rôle
+    // S'assurer que licenceStatus est disponible pour filterMenuByRole
+    if (!this.licenceStatus) {
+      fetch(`${API_URL}/licences/status`)
+        .then(r => r.json())
+        .then(data => {
+          this.licenceStatus = data;
+          this.filterMenuByRole(); // re-filtre avec les modules réels
+        })
+        .catch(() => {}); // fail open si serveur inaccessible
+    }
+
+    // Filtrer les onglets selon le rôle (calcule aussi _defaultSection)
     this.filterMenuByRole();
 
     // Initialiser l'app principal
@@ -148,40 +413,180 @@ class CocaisseApp {
       userDisplay.textContent = this.currentUser?.username || 'Admin';
     }
 
-    // Afficher la section par défaut selon le rôle
-    const defaultSection = this.currentUser?.role === 'cook' ? 'kitchen' : 'pos';
-    this.showSection(defaultSection);
+    // Afficher la section par défaut calculée par filterMenuByRole
+    this.showSection(this._defaultSection || 'pos');
 
     // Démarrer le polling des alertes (toutes les 30 secondes)
     this.startAlertPolling();
   }
 
   filterMenuByRole() {
-    const userRole = this.currentUser?.role || 'cashier';
+    const userRole      = this.currentUser?.role || 'cashier';
+    const activeModules = this.licenceStatus?.modules || [];
+    // Si pas de donnée licence (serveur inaccessible) → on considère tout actif
+    const licenceValid  = !this.licenceStatus || this.licenceStatus.valid !== false;
 
-    document.querySelectorAll('.nav-tab').forEach(item => {
-      const allowedRoles = (item.getAttribute('data-role') || '').split(',').map(r => r.trim());
-      item.style.display = allowedRoles.includes(userRole) ? '' : 'none';
+    // Catalogue des modules avec description pour l'onglet "🔒 Plus"
+    const MODULE_CATALOG = {
+      caisse:       { label: 'Caisse',       icon: '🛒', desc: 'Encaissement, panier, tickets de caisse' },
+      cuisine:      { label: 'Cuisine',      icon: '🍳', desc: 'Affichage commandes en cuisine, statuts' },
+      commandes:    { label: 'Commandes',    icon: '📋', desc: 'Gestion commandes en salle, suivi statuts' },
+      historique:   { label: 'Historique',   icon: '📜', desc: 'Historique des transactions, export' },
+      statistiques: { label: 'Statistiques', icon: '📊', desc: 'Rapports de ventes, analytics' },
+      gestion:      { label: 'Gestion',      icon: '📦', desc: 'Produits, catégories, utilisateurs, paramètres' },
+    };
+
+    const lockedModules = [];
+
+    // ── Filtrage des onglets (desktop + mobile) ──────────────────────────
+    const filterTab = (item) => {
+      const allowedRoles   = (item.getAttribute('data-role') || '').split(',').map(r => r.trim());
+      const requiredModule = item.getAttribute('data-module');
+      const section        = item.getAttribute('data-section');
+
+      // Onglet "locked" → géré séparément
+      if (section === 'locked') return;
+
+      // 1. Filtre par rôle — si data-role absent, accessible à tous
+      const roleOk = !item.getAttribute('data-role') || allowedRoles.includes(userRole);
+
+      // 2. Filtre par module
+      //    - admin → voit tout sans restriction
+      //    - modules vides / licence invalide → fail open (pas de restriction)
+      //    - sinon : l'onglet visible seulement si module actif sur la licence
+      let moduleOk = true;
+      if (userRole !== 'admin' && licenceValid && requiredModule && activeModules.length > 0) {
+        moduleOk = activeModules.includes(requiredModule);
+        if (!moduleOk && roleOk) {
+          const mod = MODULE_CATALOG[requiredModule];
+          if (mod && !lockedModules.find(m => m.id === requiredModule)) {
+            lockedModules.push({ id: requiredModule, ...mod });
+          }
+        }
+      }
+
+      // Supprimer du DOM si non autorisé
+      if (!roleOk || !moduleOk) {
+        item.remove();
+      }
+    };
+
+    document.querySelectorAll('.nav-tab').forEach(filterTab);
+    document.querySelectorAll('.mobile-nav-item').forEach(filterTab);
+
+    // ── Onglet 🔒 Plus de fonctionnalités ───────────────────────────────
+    const lockedBtn       = document.getElementById('lockedModulesBtn');
+    const lockedMobileBtn = document.getElementById('lockedModulesMobileBtn');
+    if (lockedModules.length > 0) {
+      this._lockedModules = lockedModules;
+      lockedBtn?.classList.remove('hidden');
+      lockedMobileBtn?.classList.remove('hidden');
+    } else {
+      this._lockedModules = [];
+      lockedBtn?.classList.add('hidden');
+      lockedMobileBtn?.classList.add('hidden');
+    }
+
+    // ── Boutons export/import : admin seulement ──────────────────────────
+    document.querySelectorAll('.export-btn, .import-btn').forEach(btn => {
+      btn.style.display = userRole === 'admin' ? '' : 'none';
     });
 
-    document.querySelectorAll('.mobile-nav-item').forEach(item => {
-      const allowedRoles = (item.getAttribute('data-role') || '').split(',').map(r => r.trim());
-      item.style.display = allowedRoles.includes(userRole) ? '' : 'none';
-    });
-
-    // Boutons export/import : admin seulement
-    const exportBtn = document.querySelector('.export-btn');
-    if (exportBtn) exportBtn.style.display = userRole === 'admin' ? '' : 'none';
-
-    // Bouton stats : admin/manager seulement
+    // ── Bouton stats : admin/manager seulement ───────────────────────────
     const statsBtn = document.getElementById('statsBtn');
-    if (statsBtn) statsBtn.style.display = ['admin', 'manager'].includes(userRole) ? '' : 'none';
+    if (statsBtn) {
+      statsBtn.style.display = ['admin', 'manager'].includes(userRole) ? '' : 'none';
+    }
 
-    // Bouton alertes : admin, cashier, cook
+    // ── Bouton alertes : admin, cashier, cook ────────────────────────────
     const alertsBtn = document.getElementById('alertsPanelBtn');
-    if (alertsBtn) alertsBtn.style.display = ['admin', 'cashier', 'cook'].includes(userRole) ? '' : 'none';
+    if (alertsBtn) {
+      alertsBtn.style.display = ['admin', 'cashier', 'cook'].includes(userRole) ? '' : 'none';
+    }
 
-    console.log(`✅ Menu filtré pour le rôle: ${userRole}`);
+    // ── Section par défaut selon le rôle ─────────────────────────────────
+    const defaultSections = {
+      admin:   'pos',
+      manager: 'dashboard',
+      cashier: 'pos',
+      cook:    'kitchen',
+    };
+    this._defaultSection = defaultSections[userRole] || 'pos';
+
+    console.log(`✅ Menu filtré — rôle: ${userRole} | modules actifs: [${activeModules.join(', ')}] | verrouillés: [${lockedModules.map(m=>m.id).join(', ')}]`);
+  }
+
+  // ── Onglet 🔒 Plus de fonctionnalités ──────────────────────────────────────
+  showLockedModules() {
+    // Catalogue complet de tous les modules
+    const MODULE_CATALOG = {
+      caisse:       { label: 'Caisse',       icon: '🛒', desc: 'Encaissement, panier, tickets de caisse' },
+      cuisine:      { label: 'Cuisine',      icon: '👨‍🍳', desc: 'Affichage commandes en cuisine, gestion des statuts' },
+      commandes:    { label: 'Commandes',    icon: '📋', desc: 'Prise de commandes en salle, suivi en temps réel' },
+      historique:   { label: 'Historique',   icon: '📜', desc: 'Historique des transactions, export des données' },
+      statistiques: { label: 'Statistiques', icon: '📊', desc: 'Rapports de ventes, analytics, tableau de bord' },
+      gestion:      { label: 'Gestion',      icon: '📦', desc: 'Produits, catégories, utilisateurs, paramètres' },
+    };
+
+    // Modules actifs sur cette licence
+    const activeModules = this.licenceStatus?.modules || [];
+
+    // Tous les modules NON activés sur la licence (peu importe le rôle)
+    const locked = Object.entries(MODULE_CATALOG)
+      .filter(([id]) => id !== 'caisse' && !activeModules.includes(id))
+      .map(([id, info]) => ({ id, ...info }));
+
+    if (locked.length === 0) {
+      this.toastSuccess('Tous les modules sont déjà activés sur votre licence !');
+      return;
+    }
+
+    const content = locked.map(mod => `
+      <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200 hover:border-indigo-200 transition">
+        <div class="w-12 h-12 bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+          ${mod.icon}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="font-semibold text-gray-800">${mod.label}</h3>
+            <span class="text-xs px-2 py-0.5 bg-gray-200 text-gray-500 rounded-full">🔒 Non activé</span>
+          </div>
+          <p class="text-sm text-gray-500 mb-2">${mod.desc}</p>
+          <button onclick="app._openMail('Activation module ${mod.label}', 'Bonjour,\\n\\nJe souhaite activer le module \\'${mod.label}\\' sur ma licence Co-Caisse.\\n\\nMerci.')"
+             class="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-semibold underline cursor-pointer bg-transparent border-0 p-0">
+            📧 Demander l'activation de ce module →
+          </button>
+        </div>
+      </div>
+    `).join('');
+
+    const dialog = document.getElementById('confirmDialog');
+    if (!dialog) return;
+
+    dialog.innerHTML = `
+      <div class="modal-backdrop" onclick="app.closeModal('confirmDialog')"></div>
+      <div class="modal-content max-w-lg w-full">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xl font-bold text-gray-800">🔒 Modules disponibles</h2>
+          <button onclick="app.closeModal('confirmDialog')" class="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 text-lg leading-none">✕</button>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">
+          Ces modules ne sont pas inclus dans votre licence actuelle.<br>
+          Contactez-nous pour les activer.
+        </p>
+        <div class="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+          ${content}
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-100 text-center">
+          <button onclick="app._openMail('Upgrade licence Co-Caisse', 'Bonjour,\\n\\nJe souhaite obtenir des informations sur l\\'upgrade de ma licence Co-Caisse.\\n\\nMerci.')"
+             class="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl transition shadow-md text-sm cursor-pointer border-0">
+            📧 Contacter Co-Caisse pour un devis
+          </button>
+        </div>
+      </div>
+    `;
+
+    this.openModal('confirmDialog');
   }
 
   async handleLogin(event) {
@@ -1285,6 +1690,7 @@ class CocaisseApp {
       this.loadUsers();
       this.loadSettingsData();
     }
+    if (section === 'admin') this.loadAdminPanel();
   }
 
   openProductDialog(productId = null) {
@@ -3507,6 +3913,285 @@ CocaisseApp.prototype.dismissAllAlerts = function() {
 
 // Initialize app
 let app = null;
+
+// ═══════════════════════════════════════════════════════════
+// PANEL ADMIN — GESTION DES LICENCES
+// ═══════════════════════════════════════════════════════════
+
+CocaisseApp.prototype.loadAdminPanel = async function() {
+  await Promise.all([
+    this.loadCurrentLicenceInfo(),
+    this.loadAdminLicences(),
+  ]);
+};
+
+// ── Licence active sur cette installation ────────────────────────────────────
+CocaisseApp.prototype.loadCurrentLicenceInfo = async function() {
+  const el = document.getElementById('currentLicenceInfo');
+  if (!el) return;
+  try {
+    const res  = await fetch(`${API_URL}/licences/status`);
+    const data = await res.json();
+
+    if (!data.hasLicence) {
+      el.innerHTML = `<p class="text-orange-500 font-medium">⚠️ Aucune licence active</p>`;
+      return;
+    }
+
+    const statusColor = data.valid
+      ? (data.type === 'trial' ? 'text-amber-600' : 'text-green-600')
+      : 'text-red-600';
+
+    const statusLabel = !data.valid ? '❌ Expirée/Suspendue'
+      : data.type === 'trial'       ? `⏳ Essai — ${data.daysRemaining} j restants`
+      : data.type === 'perpetual'   ? '✅ Perpétuelle'
+      : `✅ Abonnement — ${data.daysRemaining} j restants`;
+
+    el.innerHTML = `
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div><p class="text-xs text-gray-400">Client</p><p class="font-semibold text-gray-800">${data.clientName || '—'}</p></div>
+        <div><p class="text-xs text-gray-400">Statut</p><p class="font-semibold ${statusColor}">${statusLabel}</p></div>
+        <div><p class="text-xs text-gray-400">Type</p><p class="font-semibold text-gray-800">${data.type || '—'}</p></div>
+        <div><p class="text-xs text-gray-400">Modules</p><p class="font-semibold text-gray-800">${(data.modules || []).join(', ') || '—'}</p></div>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<p class="text-red-500 text-sm">Erreur chargement : ${e.message}</p>`;
+  }
+};
+
+// ── Liste toutes les licences ────────────────────────────────────────────────
+CocaisseApp.prototype.loadAdminLicences = async function() {
+  const tbody = document.getElementById('adminLicencesTable');
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Chargement...</td></tr>`;
+
+  try {
+    const res  = await this.apiFetch(`${API_URL}/admin/licences`);
+    const data = await res.json();
+    const licences = data.licences || [];
+
+    if (licences.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Aucune licence</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = licences.map(lic => {
+      const statusBadge = lic.computed_status === 'active'
+        ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">✅ Active</span>'
+        : lic.computed_status === 'expired'
+        ? '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-medium">❌ Expirée</span>'
+        : '<span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">⏸ Suspendue</span>';
+
+      const typeBadge = lic.type === 'perpetual'
+        ? '<span class="text-xs text-gray-500">♾ Perpétuelle</span>'
+        : lic.type === 'trial'
+        ? '<span class="text-xs text-amber-600">⏳ Essai</span>'
+        : '<span class="text-xs text-blue-600">🔄 Abonnement</span>';
+
+      const expiry = lic.expires_at || lic.trial_end
+        ? new Date(lic.expires_at || lic.trial_end).toLocaleDateString('fr-FR')
+        : '<span class="text-gray-400">—</span>';
+
+      const modules = (Array.isArray(lic.modules) ? lic.modules : [])
+        .map(m => `<span class="px-1 py-0.5 bg-indigo-50 text-indigo-700 text-xs rounded">${m}</span>`)
+        .join(' ');
+
+      const canSuspend = lic.computed_status === 'active';
+      const canReactivate = lic.status === 'suspended';
+
+      return `
+        <tr class="hover:bg-gray-50 border-b border-gray-100">
+          <td class="px-4 py-3">
+            <p class="font-medium text-gray-800 text-sm">${lic.client_name}</p>
+          </td>
+          <td class="px-4 py-3">
+            <code class="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded">${lic.licence_key}</code>
+          </td>
+          <td class="px-4 py-3">${typeBadge}</td>
+          <td class="px-4 py-3">${statusBadge}</td>
+          <td class="px-4 py-3"><div class="flex flex-wrap gap-1">${modules}</div></td>
+          <td class="px-4 py-3 text-sm text-gray-600">${expiry}</td>
+          <td class="px-4 py-3">
+            <div class="flex items-center justify-center gap-1">
+              <button onclick="app.showLicenceEvents('${lic.id}')" title="Historique"
+                class="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition text-sm">📋</button>
+              ${canSuspend ? `
+                <button onclick="app.suspendLicence('${lic.id}', '${lic.client_name}')" title="Suspendre"
+                  class="p-1.5 hover:bg-red-50 text-red-500 rounded-lg transition text-sm">⏸</button>
+              ` : ''}
+              ${canReactivate ? `
+                <button onclick="app.reactivateLicence('${lic.id}', '${lic.client_name}')" title="Réactiver"
+                  class="p-1.5 hover:bg-green-50 text-green-600 rounded-lg transition text-sm">▶️</button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-red-500">Erreur : ${e.message}</td></tr>`;
+  }
+};
+
+// ── Ouvre la modal de génération ─────────────────────────────────────────────
+CocaisseApp.prototype.openGenerateLicenceModal = function() {
+  // Reset formulaire
+  document.getElementById('genClientName').value = '';
+  document.getElementById('genType').value = 'perpetual';
+  document.getElementById('genExpiresAt').value = '';
+  document.getElementById('genResult').classList.add('hidden');
+  document.getElementById('genExpiryRow').classList.add('hidden');
+  document.querySelectorAll('.gen-module-check').forEach(cb => cb.checked = false);
+  const btn = document.getElementById('genSubmitBtn');
+  if (btn) { btn.disabled = false; btn.textContent = '🔑 Générer'; }
+  this.openModal('generateLicenceModal');
+};
+
+// Affiche/masque le champ expiration selon le type
+CocaisseApp.prototype.onGenTypeChange = function() {
+  const type = document.getElementById('genType').value;
+  const row  = document.getElementById('genExpiryRow');
+  if (row) row.classList.toggle('hidden', type !== 'subscription');
+};
+
+// ── Génère une nouvelle clé ──────────────────────────────────────────────────
+CocaisseApp.prototype.generateLicence = async function(event) {
+  event.preventDefault();
+  const btn        = document.getElementById('genSubmitBtn');
+  const clientName = document.getElementById('genClientName').value.trim();
+  const type       = document.getElementById('genType').value;
+  const expiresAt  = document.getElementById('genExpiresAt').value || null;
+  const modules    = ['caisse', ...Array.from(document.querySelectorAll('.gen-module-check:checked')).map(cb => cb.value)];
+
+  if (!clientName) { this.toastError('Nom du client requis'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Génération...';
+
+  try {
+    const res  = await this.apiFetch(`${API_URL}/admin/licences/generate`, {
+      method:  'POST',
+      headers: this.getAuthHeaders(),
+      body:    JSON.stringify({ clientName, modules, type, expiresAt }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+    // Afficher la clé générée
+    document.getElementById('genKeyDisplay').textContent = data.key;
+    document.getElementById('genResult').classList.remove('hidden');
+    btn.textContent = '✅ Générée !';
+    this._lastGeneratedKey = data.key;
+
+    // Rafraîchir la liste
+    this.loadAdminLicences();
+    this.toastSuccess(`Licence générée pour ${clientName}`);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '🔑 Générer';
+    this.toastError(e.message);
+  }
+};
+
+// ── Copie la clé dans le presse-papiers ─────────────────────────────────────
+CocaisseApp.prototype.copyLicenceKey = function() {
+  const key = this._lastGeneratedKey;
+  if (!key) return;
+  navigator.clipboard.writeText(key).then(() => {
+    this.toastSuccess('Clé copiée dans le presse-papiers !');
+  }).catch(() => {
+    this.toastError('Impossible de copier — copiez manuellement');
+  });
+};
+
+// ── Suspend une licence ──────────────────────────────────────────────────────
+CocaisseApp.prototype.suspendLicence = async function(id, clientName) {
+  const confirmed = await this.confirm(`Suspendre la licence de "${clientName}" ?`, {
+    title: 'Suspension', icon: '⏸', type: 'danger',
+    confirmText: 'Suspendre', cancelText: 'Annuler',
+  });
+  if (!confirmed) return;
+
+  try {
+    const res = await this.apiFetch(`${API_URL}/admin/licences/${id}/suspend`, {
+      method: 'PUT', headers: this.getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
+    this.toastSuccess(`Licence de "${clientName}" suspendue`);
+    this.loadAdminLicences();
+  } catch (e) {
+    this.toastError(e.message);
+  }
+};
+
+// ── Réactive une licence ─────────────────────────────────────────────────────
+CocaisseApp.prototype.reactivateLicence = async function(id, clientName) {
+  const confirmed = await this.confirm(`Réactiver la licence de "${clientName}" ?`, {
+    title: 'Réactivation', icon: '▶️', type: 'info',
+    confirmText: 'Réactiver', cancelText: 'Annuler',
+  });
+  if (!confirmed) return;
+
+  try {
+    const res = await this.apiFetch(`${API_URL}/admin/licences/${id}/reactivate`, {
+      method: 'PUT', headers: this.getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
+    this.toastSuccess(`Licence de "${clientName}" réactivée`);
+    this.loadAdminLicences();
+  } catch (e) {
+    this.toastError(e.message);
+  }
+};
+
+// ── Affiche l'historique d'une licence ──────────────────────────────────────
+CocaisseApp.prototype.showLicenceEvents = async function(id) {
+  const el = document.getElementById('licenceEventsContent');
+  if (!el) return;
+  el.innerHTML = `<p class="text-gray-400 text-center py-4">Chargement...</p>`;
+  this.openModal('licenceEventsModal');
+
+  try {
+    const res  = await this.apiFetch(`${API_URL}/admin/licences/${id}/events`);
+    const data = await res.json();
+
+    if (data.events.length === 0) {
+      el.innerHTML = `<p class="text-gray-400 text-center py-4">Aucun événement</p>`;
+      return;
+    }
+
+    const EVENT_ICONS = {
+      activated:     '✅', trial_started: '🚀', expired:       '❌',
+      suspended:     '⏸', reactivated:   '▶️', generated:     '🔑', renewed: '🔄',
+    };
+
+    el.innerHTML = data.events.map(e => {
+      const icon = EVENT_ICONS[e.event_type] || '•';
+      const meta = e.metadata
+        ? `<p class="text-xs text-gray-400 mt-0.5">${JSON.stringify(e.metadata)}</p>`
+        : '';
+      return `
+        <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+          <span class="text-lg leading-none mt-0.5">${icon}</span>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-semibold text-gray-800">${e.event_type}</p>
+              <p class="text-xs text-gray-400">${new Date(e.created_at).toLocaleString('fr-FR')}</p>
+            </div>
+            ${meta}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<p class="text-red-500 text-sm text-center py-4">Erreur : ${e.message}</p>`;
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function initializeApp() {
   console.log('🚀 Initialisation de l\'application Co-Caisse');

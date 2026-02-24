@@ -11,8 +11,9 @@ import express    from 'express';
 import cors       from 'cors';
 import bodyParser from 'body-parser';
 
-import Database          from './database/index.js';
-import { authMiddleware } from './middleware/auth.js';
+import Database               from './database/index.js';
+import { authMiddleware }     from './middleware/auth.js';
+import { licenceMiddleware }  from './middleware/licence.js';
 import productRoutes     from './routes/products.js';
 import categoryRoutes    from './routes/categories.js';
 import transactionRoutes from './routes/transactions.js';
@@ -20,6 +21,8 @@ import userRoutes        from './routes/users.js';
 import reportRoutes      from './routes/reports.js';
 import orderRoutes       from './routes/orders.js';
 import settingsRoutes    from './routes/settings.js';
+import licenceRoutes     from './routes/licences.js';
+import adminRoutes       from './routes/admin.js';
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
@@ -62,9 +65,14 @@ const db = new Database();
 await db.initialize();
 app.locals.db = db;
 
-// ── Route publique : login (hors authMiddleware) ──────────────────────────────
-// Le router users expose POST /login sans auth — on le monte ici sans guard
-app.use('/api/users', userRoutes);
+// ── Routes PUBLIQUES (sans JWT, sans contrôle licence) ───────────────────────
+app.use('/api/licences', licenceRoutes);   // status, trial, activate, validate
+app.use('/api/users',    userRoutes);      // login public + routes protégées internes
+
+// ── Middleware de licence ─────────────────────────────────────────────────────
+// Appliqué APRÈS les routes publiques — bloque si licence absente/expirée
+// et vérifie que le module requis est activé sur chaque route
+app.use(licenceMiddleware);
 
 // ── Routes protégées par JWT ──────────────────────────────────────────────────
 app.use('/api/products',     authMiddleware, productRoutes);
@@ -73,6 +81,7 @@ app.use('/api/transactions', authMiddleware, transactionRoutes);
 app.use('/api/orders',       authMiddleware, orderRoutes);
 app.use('/api/reports',      authMiddleware, reportRoutes);
 app.use('/api/settings',     authMiddleware, settingsRoutes);
+app.use('/api/admin',        adminRoutes);   // auth + roleCheck admin dans le router
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {

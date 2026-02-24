@@ -298,6 +298,26 @@ INSERT IGNORE INTO `payment_methods` (`id`, `name`, `code`, `enabled`) VALUES
 
 
 -- =============================================================================
+-- TABLE : _migrations
+-- Suivi des migrations automatiques jouées au démarrage du serveur
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS `_migrations` (
+  `id`         INT           NOT NULL AUTO_INCREMENT,
+  `filename`   VARCHAR(255)  NOT NULL,
+  `applied_at` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_migrations_filename` (`filename`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Suivi des migrations appliquées';
+
+
+-- =============================================================================
+-- NOTE : Les tables licences / licence_events sont gérées exclusivement par
+-- co-caisse-admin (base de données distincte chez le développeur/vendeur).
+-- La DB client ne contient que les tables métier listées ci-dessus.
+-- =============================================================================
+
 SET FOREIGN_KEY_CHECKS = 1;
 -- =============================================================================
 

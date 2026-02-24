@@ -5,6 +5,7 @@
 
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { roleCheck } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -17,7 +18,7 @@ function generateOrderNumber() {
 }
 
 // ── POST / — Créer une commande ───────────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
     const db = req.app.locals.db;
     const {
@@ -124,7 +125,7 @@ router.get('/', async (req, res) => {
 });
 
 // ── GET /kitchen/active — Commandes en cuisine ────────────────────────────────
-router.get('/kitchen/active', async (req, res) => {
+router.get('/kitchen/active', roleCheck(['admin', 'cook']), async (req, res) => {
   try {
     const db = req.app.locals.db;
     const orders = await db.all(`
@@ -141,7 +142,7 @@ router.get('/kitchen/active', async (req, res) => {
 });
 
 // ── GET /stats/summary — Statistiques du jour ─────────────────────────────────
-router.get('/stats/summary', async (req, res) => {
+router.get('/stats/summary', roleCheck(['admin', 'manager']), async (req, res) => {
   try {
     const db    = req.app.locals.db;
     const today = new Date().toISOString().split('T')[0];
@@ -260,7 +261,7 @@ router.get('/alerts/pending', async (req, res) => {
 });
 
 // ── GET /stats/detailed — Temps moyen par transition ─────────────────────────
-router.get('/stats/detailed', async (req, res) => {
+router.get('/stats/detailed', roleCheck(['admin', 'manager']), async (req, res) => {
   try {
     const db = req.app.locals.db;
     const { start_date, end_date } = req.query;
@@ -341,7 +342,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // ── PUT /:id — Modifier une commande (draft uniquement) ───────────────────────
-router.put('/:id', async (req, res) => {
+router.put('/:id', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
     const db    = req.app.locals.db;
     const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [req.params.id]);
@@ -379,7 +380,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // ── DELETE /:id — Supprimer une commande (draft uniquement) ───────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
     const db    = req.app.locals.db;
     const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [req.params.id]);
@@ -396,8 +397,8 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ── POST /:id/validate — draft → in_kitchen (validation + envoi cuisine en 1 étape) ──
-router.post('/:id/validate', async (req, res) => {
+// ── POST /:id/validate — draft → in_kitchen ──
+router.post('/:id/validate', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
     const db    = req.app.locals.db;
     const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [req.params.id]);
@@ -518,7 +519,7 @@ router.post('/:id/kitchen-comment', async (req, res) => {
 });
 
 // ── POST /:id/mark-served — ready → served ────────────────────────────────────
-router.post('/:id/mark-served', async (req, res) => {
+router.post('/:id/mark-served', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
     const db    = req.app.locals.db;
     const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [req.params.id]);
@@ -541,7 +542,7 @@ router.post('/:id/mark-served', async (req, res) => {
 });
 
 // ── POST /:id/pay — Encaissement d'une commande ───────────────────────────────
-router.post('/:id/pay', async (req, res) => {
+router.post('/:id/pay', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
     const db    = req.app.locals.db;
     const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [req.params.id]);

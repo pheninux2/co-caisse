@@ -24,7 +24,7 @@ npm run dev
 Tu dois voir : Server running on port 5000
 
 3. Lance le frontend
-bashcd client
+fi
 npm run dev
 Ça démarre webpack-dev-server sur le port 3000, puis Electron s'ouvre automatiquement.
 

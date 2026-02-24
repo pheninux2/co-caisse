@@ -14,7 +14,9 @@ services:
       - "${DB_PORT:-3306}:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
-      - ../server/src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # schema.sql retiré intentionnellement :
+      # les tables sont créées automatiquement par database/index.js (initialize + runMigrations)
+      # au premier démarrage du serveur Node — pas besoin d'init Docker
     networks:
       - co-caisse-network
     healthcheck:

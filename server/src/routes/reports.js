@@ -4,8 +4,12 @@
  */
 
 import express from 'express';
+import { roleCheck } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// Toutes les routes rapports : admin + manager uniquement
+router.use(roleCheck(['admin', 'manager']));
 
 // ── GET /sales/daily — Rapport des ventes journalières ────────────────────────
 router.get('/sales/daily', async (req, res) => {

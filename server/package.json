@@ -5,23 +5,23 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start":  "node src/index.js",
-    "dev":    "node --watch src/index.js",
-    "seed":   "node src/database/seed.js",
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/database/seed.js",
     "schema": "mysql -u $DB_USER -p$DB_PASS $DB_NAME < src/database/schema.sql"
   },
   "dependencies": {
-    "bcryptjs":    "^3.0.3",
+    "bcryptjs": "^3.0.3",
     "body-parser": "^1.20.2",
-    "cors":        "^2.8.5",
-    "dotenv":      "^17.3.1",
-    "express":     "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
-    "mysql2":      "^3.17.4",
-    "uuid":        "^9.0.0"
+    "mysql2": "^3.17.4",
+    "nodemailer": "^8.0.1",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "eslint": "^8.50.0"
   }
 }
-

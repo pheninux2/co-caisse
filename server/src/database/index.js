@@ -9,10 +9,16 @@
  * Les routes existantes n'ont donc pas à changer.
  */
 
-import mysql from 'mysql2/promise';
+import mysql  from 'mysql2/promise';
 import dotenv from 'dotenv';
+import fs     from 'fs';
+import path   from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
 // ──────────────────────────────────────────────
 // Pool de connexions
@@ -202,9 +208,117 @@ class Database {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
 
+      // NOTE : les tables licences / licence_events sont créées via la migration
+      // 001_licences.sql (appliquée automatiquement ci-dessous).
+      // La DB admin (cocaisse_admin) conserve l'historique complet.
+      // La DB client stocke uniquement la clé activée localement.
+
       await conn.query('SET FOREIGN_KEY_CHECKS = 1');
       console.log('✅ Database connected');
       console.log('✅ All tables created/verified');
+    } finally {
+      conn.release();
+    }
+
+    // ── Jouer les migrations automatiquement ──────
+    await this.runMigrations();
+  }
+
+  // ── Système de migrations ─────────────────────
+  // Lit tous les fichiers *.sql dans migrations/,
+  // les joue dans l'ordre alphabétique (001_, 002_…),
+  // et ne rejoue jamais un fichier déjà exécuté.
+  async runMigrations() {
+    const conn = await this.pool.getConnection();
+    try {
+      // 1. Créer la table de suivi si elle n'existe pas
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          id         INT          NOT NULL AUTO_INCREMENT,
+          filename   VARCHAR(255) NOT NULL UNIQUE,
+          applied_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+
+      // 2. Lire les fichiers .sql du dossier migrations/
+      const migrationsDir = path.join(__dirname, 'migrations');
+      if (!fs.existsSync(migrationsDir)) {
+        console.log('ℹ️  Dossier migrations/ absent — aucune migration à jouer');
+        return;
+      }
+
+      const files = fs.readdirSync(migrationsDir)
+        .filter(f => f.endsWith('.sql'))
+        .sort(); // ordre alphabétique → 001_, 002_…
+
+      if (files.length === 0) {
+        console.log('ℹ️  Aucun fichier de migration trouvé');
+        return;
+      }
+
+      // 3. Récupérer les migrations déjà jouées
+      const [applied] = await conn.query('SELECT filename FROM _migrations');
+      const appliedSet = new Set(applied.map(r => r.filename));
+
+      // 4. Jouer uniquement les nouvelles
+      let count = 0;
+      for (const file of files) {
+        if (appliedSet.has(file)) {
+          // Déjà jouée — on passe
+          continue;
+        }
+
+        console.log(`⏳ Migration : ${file}`);
+        const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+
+        // Exécuter chaque statement séparément (split sur ;)
+        // On filtre les lignes vides, commentaires purs et SET redondants
+        const statements = sql
+          .split(';')
+          .map(s => s.trim())
+          .filter(s => {
+            if (!s || s.length === 0) return false;
+            if (s.startsWith('--'))   return false;
+            // SET FOREIGN_KEY_CHECKS et SET NAMES sont gérés par le runner
+            const upper = s.toUpperCase();
+            if (upper.startsWith('SET FOREIGN_KEY_CHECKS')) return false;
+            if (upper.startsWith('SET NAMES'))              return false;
+            if (upper.startsWith('SET TIME_ZONE'))          return false;
+            return true;
+          });
+
+        await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+        for (const stmt of statements) {
+          try {
+            await conn.query(stmt);
+          } catch (err) {
+            // Ignorer les erreurs "table already exists" / "duplicate key" — idempotent
+            if (err.code === 'ER_TABLE_EXISTS_ERROR' || err.code === 'ER_DUP_KEYNAME') {
+              continue;
+            }
+            throw new Error(`Migration ${file} — erreur sur : ${stmt.slice(0, 80)}\n  → ${err.message}`);
+          }
+        }
+        await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+
+        // Marquer comme jouée
+        await conn.query(
+          'INSERT INTO _migrations (filename) VALUES (?)',
+          [file]
+        );
+        console.log(`✅ Migration appliquée : ${file}`);
+        count++;
+      }
+
+      if (count === 0) {
+        console.log('✅ Migrations : aucune nouvelle migration');
+      } else {
+        console.log(`✅ ${count} migration(s) appliquée(s)`);
+      }
+    } catch (error) {
+      console.error('❌ Erreur migrations :', error.message);
+      // Ne pas crasher le serveur — les tables de base existent déjà
     } finally {
       conn.release();
     }

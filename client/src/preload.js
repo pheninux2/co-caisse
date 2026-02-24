@@ -66,6 +66,10 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Version de l'application (via ipcMain.handle, pas app.getVersion() direct)
   getAppVersion: () => ipcRenderer.invoke('get-version'),
+
+  // Ouvre un lien externe (mailto:, https://) via le shell Electron
+  // sans ouvrir un navigateur depuis le renderer
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 });
 
 contextBridge.exposeInMainWorld('api', {

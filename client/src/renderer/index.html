@@ -6,6 +6,35 @@
     <title>Co-Caisse - Gestion de Caisse</title>
 </head>
 <body class="bg-gray-900 overflow-hidden">
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         ÉCRAN LICENCE — affiché avant le login si aucune licence active
+         ══════════════════════════════════════════════════════════════════ -->
+    <div id="licenceScreen" class="hidden fixed inset-0 bg-gradient-to-br from-gray-900 via-indigo-950 to-gray-900 flex items-center justify-center z-[100]">
+        <div class="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4 text-center">
+            <!-- Logo -->
+            <div class="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <span class="text-4xl">💰</span>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-1">Co-Caisse</h1>
+            <p class="text-gray-500 text-sm mb-6">Gestion intelligente de caisse</p>
+
+            <!-- Contenu dynamique selon l'état de la licence -->
+            <div id="licenceContent">
+                <!-- injecté par JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         BANDEAU TRIAL — bandeau discret affiché en haut quand essai actif
+         ══════════════════════════════════════════════════════════════════ -->
+    <div id="trialBanner" class="hidden fixed top-0 left-0 right-0 z-[60] bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-semibold text-center py-1.5 px-4 flex items-center justify-center gap-2">
+        <span>⏳</span>
+        <span id="trialBannerText">Essai gratuit — XX jours restants</span>
+        <button onclick="app._openMail('Activation licence Co-Caisse', 'Bonjour,\n\nJe souhaite activer ma licence Co-Caisse.\n\nMerci.')" class="ml-3 underline hover:no-underline opacity-90 bg-transparent border-0 text-white text-xs cursor-pointer font-semibold">Activer ma licence →</button>
+    </div>
+
     <!-- Login Screen -->
     <div id="loginScreen" class="fixed inset-0 bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-800 flex items-center justify-center z-50">
         <div class="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-sm mx-4">
@@ -65,33 +94,42 @@
 
             <!-- Navigation Tabs -->
             <nav id="mainNav" class="hidden lg:flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-                <button onclick="app.showSection('pos')" class="nav-tab active" data-section="pos" data-role="admin,manager,cashier">
+                <button onclick="app.showSection('pos')" class="nav-tab active" data-section="pos" data-role="admin,cashier" data-module="caisse">
                     <span class="text-lg">🛒</span>
                     <span class="hidden xl:inline">Caisse</span>
                 </button>
-                <button onclick="app.showSection('kitchen')" class="nav-tab" data-section="kitchen" data-role="admin,cook">
+                <button onclick="app.showSection('kitchen')" class="nav-tab" data-section="kitchen" data-role="admin,cook" data-module="cuisine">
                     <span class="text-lg">👨‍🍳</span>
                     <span class="hidden xl:inline">Cuisine</span>
                 </button>
-                <button onclick="app.showSection('orders')" class="nav-tab" data-section="orders" data-role="admin,cashier">
+                <button onclick="app.showSection('orders')" class="nav-tab" data-section="orders" data-role="admin,cashier" data-module="commandes">
                     <span class="text-lg">📋</span>
                     <span class="hidden xl:inline">Commandes</span>
                 </button>
-                <button onclick="app.showSection('dashboard')" class="nav-tab" data-section="dashboard" data-role="admin,manager">
+                <button onclick="app.showSection('dashboard')" class="nav-tab" data-section="dashboard" data-role="admin,manager" data-module="statistiques">
                     <span class="text-lg">📊</span>
                     <span class="hidden xl:inline">Tableau</span>
                 </button>
-                <button onclick="app.showSection('products')" class="nav-tab" data-section="products" data-role="admin">
+                <button onclick="app.showSection('products')" class="nav-tab" data-section="products" data-role="admin,manager" data-module="gestion">
                     <span class="text-lg">📦</span>
                     <span class="hidden xl:inline">Produits</span>
                 </button>
-                <button onclick="app.showSection('history')" class="nav-tab" data-section="history" data-role="admin,manager">
+                <button onclick="app.showSection('history')" class="nav-tab" data-section="history" data-role="admin,manager" data-module="historique">
                     <span class="text-lg">📜</span>
                     <span class="hidden xl:inline">Historique</span>
                 </button>
-                <button onclick="app.showSection('settings')" class="nav-tab" data-section="settings" data-role="admin">
+                <button onclick="app.showSection('settings')" class="nav-tab" data-section="settings" data-role="admin" data-module="gestion">
                     <span class="text-lg">⚙️</span>
                     <span class="hidden xl:inline">Config</span>
+                </button>
+                <button onclick="app.showSection('admin')" class="nav-tab" data-section="admin" data-role="admin" data-module="gestion">
+                    <span class="text-lg">🔑</span>
+                    <span class="hidden xl:inline">Licences</span>
+                </button>
+                <!-- Onglet modules verrouillés — injecté dynamiquement par JS si nécessaire -->
+                <button id="lockedModulesBtn" onclick="app.showLockedModules()" class="nav-tab hidden" data-section="locked">
+                    <span class="text-lg">🔒</span>
+                    <span class="hidden xl:inline">Plus</span>
                 </button>
             </nav>
 
@@ -140,26 +178,32 @@
                     </div>
                 </div>
                 <nav class="p-2">
-                    <button onclick="app.showSection('pos'); app.closeMobileMenu();" class="mobile-nav-item" data-section="pos" data-role="admin,manager,cashier">
+                    <button onclick="app.showSection('pos'); app.closeMobileMenu();" class="mobile-nav-item" data-section="pos" data-role="admin,cashier" data-module="caisse">
                         <span>🛒</span> Caisse
                     </button>
-                    <button onclick="app.showSection('kitchen'); app.closeMobileMenu();" class="mobile-nav-item" data-section="kitchen" data-role="admin,cook">
+                    <button onclick="app.showSection('kitchen'); app.closeMobileMenu();" class="mobile-nav-item" data-section="kitchen" data-role="admin,cook" data-module="cuisine">
                         <span>👨‍🍳</span> Cuisine
                     </button>
-                    <button onclick="app.showSection('orders'); app.closeMobileMenu();" class="mobile-nav-item" data-section="orders" data-role="admin,cashier">
+                    <button onclick="app.showSection('orders'); app.closeMobileMenu();" class="mobile-nav-item" data-section="orders" data-role="admin,cashier" data-module="commandes">
                         <span>📋</span> Commandes
                     </button>
-                    <button onclick="app.showSection('dashboard'); app.closeMobileMenu();" class="mobile-nav-item" data-section="dashboard" data-role="admin,manager">
+                    <button onclick="app.showSection('dashboard'); app.closeMobileMenu();" class="mobile-nav-item" data-section="dashboard" data-role="admin,manager" data-module="statistiques">
                         <span>📊</span> Tableau de bord
                     </button>
-                    <button onclick="app.showSection('products'); app.closeMobileMenu();" class="mobile-nav-item" data-section="products" data-role="admin">
+                    <button onclick="app.showSection('products'); app.closeMobileMenu();" class="mobile-nav-item" data-section="products" data-role="admin,manager" data-module="gestion">
                         <span>📦</span> Produits & Catégories
                     </button>
-                    <button onclick="app.showSection('history'); app.closeMobileMenu();" class="mobile-nav-item" data-section="history" data-role="admin,manager">
+                    <button onclick="app.showSection('history'); app.closeMobileMenu();" class="mobile-nav-item" data-section="history" data-role="admin,manager" data-module="historique">
                         <span>📜</span> Historique
                     </button>
-                    <button onclick="app.showSection('settings'); app.closeMobileMenu();" class="mobile-nav-item" data-section="settings" data-role="admin">
+                    <button onclick="app.showSection('settings'); app.closeMobileMenu();" class="mobile-nav-item" data-section="settings" data-role="admin" data-module="gestion">
                         <span>⚙️</span> Paramètres
+                    </button>
+                    <button onclick="app.showSection('admin'); app.closeMobileMenu();" class="mobile-nav-item" data-section="admin" data-role="admin" data-module="gestion">
+                        <span>🔑</span> Licences
+                    </button>
+                    <button onclick="app.showLockedModules(); app.closeMobileMenu();" id="lockedModulesMobileBtn" class="mobile-nav-item hidden" data-section="locked">
+                        <span>🔒</span> Plus de fonctionnalités
                     </button>
                 </nav>
             </div>
@@ -661,10 +705,147 @@
                     </button>
                 </div>
             </section>
+
+            <!-- ============ ADMIN LICENCES SECTION ============ -->
+            <section id="admin-section" class="hidden h-full overflow-y-auto p-4">
+                <div class="max-w-5xl mx-auto space-y-4">
+
+                    <!-- Header -->
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">🔑 Gestion des licences</h2>
+                            <p class="text-sm text-gray-500">Panel interne Co-Caisse — admin uniquement</p>
+                        </div>
+                        <button onclick="app.openGenerateLicenceModal()"
+                            class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl shadow-md transition text-sm">
+                            ➕ Générer une licence
+                        </button>
+                    </div>
+
+                    <!-- Licence courante -->
+                    <div class="bg-white rounded-2xl shadow-sm p-4 border border-indigo-100">
+                        <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                            <span>📊</span> Licence active sur cette installation
+                        </h3>
+                        <div id="currentLicenceInfo" class="text-sm text-gray-500">Chargement...</div>
+                    </div>
+
+                    <!-- Liste des licences -->
+                    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                            <h3 class="font-semibold text-gray-700">Toutes les licences</h3>
+                            <button onclick="app.loadAdminLicences()" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">🔄 Actualiser</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Client</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Clé</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Statut</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Modules</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Expiration</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminLicencesTable">
+                                    <tr><td colspan="7" class="text-center py-6 text-gray-400">Chargement...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
     <!-- ============ MODALS ============ -->
+
+    <!-- Generate Licence Modal -->
+    <div id="generateLicenceModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('generateLicenceModal')"></div>
+        <div class="modal-content max-w-md">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">🔑 Générer une licence</h2>
+            <form onsubmit="app.generateLicence(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Nom du client *</label>
+                    <input type="text" id="genClientName" placeholder="Ex: Le Bistrot du Coin" required
+                        class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Type de licence *</label>
+                    <select id="genType" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" onchange="app.onGenTypeChange()">
+                        <option value="perpetual">Perpétuelle (pas d'expiration)</option>
+                        <option value="subscription">Abonnement (avec expiration)</option>
+                        <option value="trial">Essai 30 jours</option>
+                    </select>
+                </div>
+                <div id="genExpiryRow" class="hidden">
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Date d'expiration</label>
+                    <input type="date" id="genExpiresAt" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-2">Modules activés *</label>
+                    <div id="genModules" class="grid grid-cols-2 gap-2">
+                        <label class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-indigo-50">
+                            <input type="checkbox" value="caisse" checked disabled class="accent-indigo-600">
+                            <span class="text-sm">🛒 Caisse <span class="text-xs text-gray-400">(inclus)</span></span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-indigo-50">
+                            <input type="checkbox" value="cuisine" class="accent-indigo-600 gen-module-check">
+                            <span class="text-sm">👨‍🍳 Cuisine</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-indigo-50">
+                            <input type="checkbox" value="commandes" class="accent-indigo-600 gen-module-check">
+                            <span class="text-sm">📋 Commandes</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-indigo-50">
+                            <input type="checkbox" value="historique" class="accent-indigo-600 gen-module-check">
+                            <span class="text-sm">📜 Historique</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-indigo-50">
+                            <input type="checkbox" value="statistiques" class="accent-indigo-600 gen-module-check">
+                            <span class="text-sm">📊 Statistiques</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-indigo-50">
+                            <input type="checkbox" value="gestion" class="accent-indigo-600 gen-module-check">
+                            <span class="text-sm">📦 Gestion</span>
+                        </label>
+                    </div>
+                </div>
+                <div id="genResult" class="hidden p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p class="text-xs font-semibold text-green-700 mb-1">✅ Clé générée :</p>
+                    <p id="genKeyDisplay" class="font-mono text-sm font-bold text-green-800 tracking-wider"></p>
+                    <button type="button" onclick="app.copyLicenceKey()" class="mt-2 text-xs text-green-700 underline">📋 Copier</button>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="app.closeModal('generateLicenceModal')" class="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">Fermer</button>
+                    <button type="submit" id="genSubmitBtn" class="flex-1 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-lg text-sm transition hover:from-indigo-700 hover:to-purple-700">
+                        🔑 Générer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Licence Events Modal -->
+    <div id="licenceEventsModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('licenceEventsModal')"></div>
+        <div class="modal-content max-w-lg">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800">📋 Historique de la licence</h2>
+                <button onclick="app.closeModal('licenceEventsModal')" class="p-1 hover:bg-gray-100 rounded-lg text-gray-500 text-lg">✕</button>
+            </div>
+            <div id="licenceEventsContent" class="space-y-2 max-h-96 overflow-y-auto">
+                <p class="text-gray-400 text-center py-4">Chargement...</p>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <button onclick="app.closeModal('licenceEventsModal')" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition">Fermer</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Product Modal -->
     <div id="productModal" class="modal hidden">

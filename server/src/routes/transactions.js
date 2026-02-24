@@ -5,11 +5,12 @@
 
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { roleCheck } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // ── POST / — Créer une transaction ───────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
     const db = req.app.locals.db;
     const {
@@ -71,7 +72,7 @@ router.post('/', async (req, res) => {
 });
 
 // ── GET / — Lister les transactions avec filtres ──────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', roleCheck(['admin', 'manager']), async (req, res) => {
   try {
     const db = req.app.locals.db;
     const {
@@ -103,7 +104,7 @@ router.get('/', async (req, res) => {
 });
 
 // ── GET /summary/daily — Résumé journalier ────────────────────────────────────
-router.get('/summary/daily', async (req, res) => {
+router.get('/summary/daily', roleCheck(['admin', 'manager', 'cashier']), async (req, res) => {
   try {
     const db   = req.app.locals.db;
     const date = req.query.date || new Date().toISOString().split('T')[0];
@@ -128,7 +129,7 @@ router.get('/summary/daily', async (req, res) => {
 });
 
 // ── GET /summary/period — Résumé sur une période ──────────────────────────────
-router.get('/summary/period', async (req, res) => {
+router.get('/summary/period', roleCheck(['admin', 'manager']), async (req, res) => {
   try {
     const db           = req.app.locals.db;
     const { start, end } = req.query;
@@ -156,7 +157,7 @@ router.get('/summary/period', async (req, res) => {
 });
 
 // ── GET /:id — Obtenir une transaction par ID ─────────────────────────────────
-router.get('/:id', async (req, res) => {
+router.get('/:id', roleCheck(['admin', 'manager', 'cashier']), async (req, res) => {
   try {
     const db = req.app.locals.db;
     const transaction = await db.get(`

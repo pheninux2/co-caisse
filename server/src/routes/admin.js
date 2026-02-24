@@ -1,26 +1,27 @@
 /**
- * Co-Caisse — Routes admin (gestion licences + auth admin)
- * Version : 2.0.0
+ * Co-Caisse — Routes admin (server client)
+ * Version : 2.1.0
+ *
+ * Ce serveur est hébergé chez le CLIENT — il ne génère PAS de licences.
+ * La génération est exclusivement dans co-caisse-admin (PC développeur).
  *
  * Routes PUBLIC (sans JWT) :
- *   POST /api/admin/auth/login       → auth co-caisse-admin (mot de passe env)
+ *   POST /api/admin/auth/login       → auth admin locale (mot de passe env)
  *
  * Routes PROTÉGÉES JWT + rôle admin :
- *   GET  /api/admin/licences                  → liste toutes les licences
- *   POST /api/admin/licences/generate         → génère une nouvelle clé
- *   PUT  /api/admin/licences/:id/suspend      → suspend
- *   PUT  /api/admin/licences/:id/reactivate   → réactive
+ *   GET  /api/admin/licences                  → liste la licence locale
+ *   GET  /api/admin/licences/modules          → catalogue modules disponibles
+ *   GET  /api/admin/licences/:id/events       → historique événements
+ *   PUT  /api/admin/licences/:id/suspend      → suspend la licence locale
+ *   PUT  /api/admin/licences/:id/reactivate   → réactive la licence locale
  *   PUT  /api/admin/licences/:id/extend       → étend l'expiration
  *   PUT  /api/admin/licences/:id/modules      → met à jour les modules
- *   POST /api/admin/licences/:id/resend       → renvoie email
- *   GET  /api/admin/licences/:id/events       → historique
- *   GET  /api/admin/licences/modules          → catalogue modules
  */
 
 import express from 'express';
 import jwt     from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { authMiddleware, roleCheck }                         from '../middleware/auth.js';
+import { authMiddleware, roleCheck }              from '../middleware/auth.js';
 import { generateLicenceKey, isExpired, AVAILABLE_MODULES } from '../services/licence.service.js';
 
 const router = express.Router();
@@ -83,57 +84,6 @@ router.get('/licences', async (req, res) => {
 
     res.json({ licences: enriched, total: enriched.length });
   } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── POST /licences/generate ───────────────────────────────────────────────────
-router.post('/licences/generate', async (req, res) => {
-  try {
-    const db = req.app.locals.db;
-    const { clientName, clientEmail, modules = ['caisse'], type = 'perpetual', expiresAt = null, notes = null } = req.body;
-
-    if (!clientName?.trim())  return res.status(400).json({ error: 'clientName est requis' });
-    if (!clientEmail?.trim()) return res.status(400).json({ error: 'clientEmail est requis' });
-
-    const invalid = modules.filter(m => !AVAILABLE_MODULES.includes(m));
-    if (invalid.length) return res.status(400).json({ error: `Modules invalides : ${invalid.join(', ')}` });
-
-    const key      = generateLicenceKey(clientName, modules, type);
-    const mods     = [...new Set(['caisse', ...modules])].sort();
-    const id       = uuidv4();
-    let trialStart = null, trialEnd = null, finalExpiry = expiresAt || null;
-
-    if (type === 'trial') {
-      trialStart  = new Date();
-      trialEnd    = new Date(Date.now() + 30 * 86400000);
-      finalExpiry = trialEnd;
-    }
-
-    await db.run(
-      `INSERT INTO licences (id, client_name, client_email, licence_key, type, status, modules, trial_start, trial_end, expires_at, notes)
-       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
-      [id, clientName.trim(), clientEmail.trim(), key, type, JSON.stringify(mods), trialStart, trialEnd, finalExpiry, notes]
-    );
-    await db.run('INSERT INTO licence_events (id, licence_id, event_type, metadata) VALUES (?, ?, ?, ?)',
-      [uuidv4(), id, 'generated', JSON.stringify({ generated_by: req.userId, modules: mods, type })]);
-
-    const licence    = await db.get('SELECT * FROM licences WHERE id = ?', [id]);
-    const licModules = typeof licence.modules === 'string' ? JSON.parse(licence.modules) : licence.modules;
-
-    console.log(`[admin] Licence generee : ${clientName} / ${type} / ${key}`);
-
-    // Email sera envoyé à l'Étape 5
-    try {
-      const { sendLicenceEmail } = await import('../services/email.service.js');
-      await sendLicenceEmail({ to: clientEmail.trim(), clientName: clientName.trim(), licenceKey: key, modules: mods, type, expiresAt: finalExpiry });
-    } catch (emailErr) {
-      console.warn('[admin/generate] Email service indisponible :', emailErr.message);
-    }
-
-    res.status(201).json({ success: true, licence: { ...licence, modules: licModules }, licence_key: key });
-  } catch (e) {
-    console.error('[admin/generate]', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -211,69 +161,11 @@ router.put('/licences/:id/modules', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── POST /licences/:id/resend ─────────────────────────────────────────────────
-router.post('/licences/:id/resend', async (req, res) => {
-  try {
-    const db      = req.app.locals.db;
-    const licence = await db.get('SELECT * FROM licences WHERE id = ?', [req.params.id]);
-    if (!licence)              return res.status(404).json({ error: 'Licence introuvable' });
-    if (!licence.client_email) return res.status(400).json({ error: 'Aucun email client pour cette licence' });
-
-    const modules = typeof licence.modules === 'string' ? JSON.parse(licence.modules) : licence.modules;
-
-    try {
-      const { sendLicenceEmail } = await import('../services/email.service.js');
-      await sendLicenceEmail({ to: licence.client_email, clientName: licence.client_name, licenceKey: licence.licence_key, modules, type: licence.type, expiresAt: licence.expires_at });
-    } catch (emailErr) {
-      console.warn('[admin/resend] Email service indisponible :', emailErr.message);
-      console.log(`[admin/resend] Cle a envoyer manuellement a ${licence.client_email} : ${licence.licence_key}`);
-    }
-
-    await db.run('INSERT INTO licence_events (id, licence_id, event_type, metadata) VALUES (?, ?, ?, ?)',
-      [uuidv4(), req.params.id, 'resent', JSON.stringify({ resent_by: req.userId, to: licence.client_email })]);
-
-    res.json({ success: true, message: `Email renvoye a ${licence.client_email}` });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── POST /smtp/test — Teste la connexion SMTP ─────────────────────────────────
-router.post('/smtp/test', async (req, res) => {
-  try {
-    const { testSmtpConnection } = await import('../services/email.service.js');
-    await testSmtpConnection();
-    res.json({ ok: true, message: 'Connexion SMTP vérifiée avec succès' });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// ── POST /smtp/send-test — Envoie un email de test ────────────────────────────
-// Body : { to }
-router.post('/smtp/send-test', async (req, res) => {
-  try {
-    const { to } = req.body;
-    if (!to) return res.status(400).json({ error: 'to est requis' });
-
-    const { sendLicenceEmail } = await import('../services/email.service.js');
-    await sendLicenceEmail({
-      to,
-      clientName:  'Client Test',
-      licenceKey:  'CCZ-TEST-1234-ABCD',
-      modules:     ['caisse', 'commandes', 'historique'],
-      type:        'perpetual',
-      expiresAt:   null,
-    });
-    res.json({ ok: true, message: `Email de test envoyé à ${to}` });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
 // ── GET /licences/:id/events ──────────────────────────────────────────────────
 router.get('/licences/:id/events', async (req, res) => {
   try {
     const db      = req.app.locals.db;
-    const licence = await db.get('SELECT id, client_name, client_email, licence_key, type, status FROM licences WHERE id = ?', [req.params.id]);
+    const licence = await db.get('SELECT id, client_name, licence_key, type, status FROM licences WHERE id = ?', [req.params.id]);
     if (!licence) return res.status(404).json({ error: 'Licence introuvable' });
 
     const events = await db.all(

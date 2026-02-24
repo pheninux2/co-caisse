@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- CSP : unsafe-eval requis par webpack-dev-server HMR en développement -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' ws://localhost:4000 <%= ADMIN_API_URL %> http://localhost:4000;">
+  <title>Co-Caisse Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     ÉCRAN DE CONNEXION
+════════════════════════════════════════════════════════════ -->
+<div id="loginScreen" class="screen-center">
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="logo-icon">🔑</span>
+      <h1>Co-Caisse<span class="logo-accent"> Admin</span></h1>
+      <p>Outil interne de gestion des licences</p>
+    </div>
+    <form id="loginForm" onsubmit="app.login(event)">
+      <div class="field">
+        <label>Mot de passe admin</label>
+        <input type="password" id="loginPassword" placeholder="••••••••••" autofocus required>
+      </div>
+      <div id="loginError" class="error-msg hidden"></div>
+      <button type="submit" class="btn btn-primary btn-full">
+        Accéder →
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     APPLICATION PRINCIPALE
+════════════════════════════════════════════════════════════ -->
+<div id="appScreen" class="hidden">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <span>🔑</span>
+      <div>
+        <div class="sidebar-title">Co-Caisse</div>
+        <div class="sidebar-sub">Admin</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-section="dashboard" onclick="app.showSection('dashboard')">
+        <span>📊</span> Tableau de bord
+      </button>
+      <button class="nav-item" data-section="licences" onclick="app.showSection('licences')">
+        <span>🗂️</span> Licences
+      </button>
+      <button class="nav-item" data-section="generate" onclick="app.showSection('generate')">
+        <span>➕</span> Nouvelle licence
+      </button>
+      <button class="nav-item" data-section="smtp" onclick="app.showSection('smtp')">
+        <span>📧</span> Paramètres SMTP
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span id="appVersion" class="version-tag">v1.0.0</span>
+      <button onclick="app.logout()" class="btn-logout">Déconnexion</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main-content">
+
+    <!-- ── TABLEAU DE BORD ──────────────────────────────────────── -->
+    <section id="dashboard-section" class="section">
+      <div class="section-header">
+        <h2>Tableau de bord</h2>
+        <button onclick="app.loadDashboard()" class="btn btn-ghost btn-sm">🔄 Actualiser</button>
+      </div>
+
+      <!-- Stats cards -->
+      <div class="stats-grid">
+        <div class="stat-card stat-green">
+          <div class="stat-icon">✅</div>
+          <div>
+            <div class="stat-value" id="statActive">—</div>
+            <div class="stat-label">Actives</div>
+          </div>
+        </div>
+        <div class="stat-card stat-amber">
+          <div class="stat-icon">⏳</div>
+          <div>
+            <div class="stat-value" id="statTrial">—</div>
+            <div class="stat-label">En essai</div>
+          </div>
+        </div>
+        <div class="stat-card stat-blue">
+          <div class="stat-icon">♾️</div>
+          <div>
+            <div class="stat-value" id="statPerpetual">—</div>
+            <div class="stat-label">Perpétuelles</div>
+          </div>
+        </div>
+        <div class="stat-card stat-red">
+          <div class="stat-icon">❌</div>
+          <div>
+            <div class="stat-value" id="statExpired">—</div>
+            <div class="stat-label">Expirées</div>
+          </div>
+        </div>
+        <div class="stat-card stat-gray">
+          <div class="stat-icon">⏸</div>
+          <div>
+            <div class="stat-value" id="statSuspended">—</div>
+            <div class="stat-label">Suspendues</div>
+          </div>
+        </div>
+        <div class="stat-card stat-purple">
+          <div class="stat-icon">🔢</div>
+          <div>
+            <div class="stat-value" id="statTotal">—</div>
+            <div class="stat-label">Total</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dernières licences -->
+      <div class="card mt-6">
+        <div class="card-header">
+          <h3>Dernières licences générées</h3>
+        </div>
+        <div id="recentLicences" class="table-wrap">
+          <p class="empty-state">Chargement...</p>
+        </div>
+      </div>
+
+      <!-- Licences expirant bientôt -->
+      <div class="card mt-4">
+        <div class="card-header">
+          <h3>⚠️ Expirent dans moins de 30 jours</h3>
+        </div>
+        <div id="expiringSoon" class="table-wrap">
+          <p class="empty-state">Chargement...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── LISTE DES LICENCES ───────────────────────────────────── -->
+    <section id="licences-section" class="section hidden">
+      <div class="section-header">
+        <h2>Licences</h2>
+        <div class="header-actions">
+          <button onclick="app.exportCsv()" class="btn btn-ghost btn-sm">📥 Export CSV</button>
+          <button onclick="app.loadLicences()" class="btn btn-ghost btn-sm">🔄 Actualiser</button>
+        </div>
+      </div>
+
+      <!-- Filtres -->
+      <div class="filters-bar">
+        <input type="text" id="searchInput" placeholder="🔍 Rechercher client, clé..." oninput="app.filterLicences()" class="filter-input">
+        <select id="filterType" onchange="app.filterLicences()" class="filter-select">
+          <option value="">Tous les types</option>
+          <option value="trial">Essai</option>
+          <option value="perpetual">Perpétuelle</option>
+          <option value="subscription">Abonnement</option>
+        </select>
+        <select id="filterStatus" onchange="app.filterLicences()" class="filter-select">
+          <option value="">Tous les statuts</option>
+          <option value="active">Active</option>
+          <option value="expired">Expirée</option>
+          <option value="suspended">Suspendue</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table class="table" id="licencesTable">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Clé</th>
+                <th>Type</th>
+                <th>Statut</th>
+                <th>Modules</th>
+                <th>Expiration</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="licencesBody">
+              <tr><td colspan="7" class="empty-state">Chargement...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── NOUVELLE LICENCE ─────────────────────────────────────── -->
+    <section id="generate-section" class="section hidden">
+      <div class="section-header">
+        <h2>Générer une nouvelle licence</h2>
+      </div>
+
+      <div class="form-card">
+        <form id="generateForm" onsubmit="app.generateLicence(event)">
+
+          <!-- Client -->
+          <div class="form-group">
+            <h3 class="form-section-title">👤 Informations client</h3>
+            <div class="form-row">
+              <div class="field">
+                <label>Nom du client <span class="required">*</span></label>
+                <input type="text" id="genClientName" placeholder="Ex: Restaurant Le Bistrot" required>
+              </div>
+              <div class="field">
+                <label>Email <span class="required">*</span></label>
+                <input type="email" id="genEmail" placeholder="client@restaurant.fr" required>
+              </div>
+            </div>
+          </div>
+
+          <!-- Type -->
+          <div class="form-group">
+            <h3 class="form-section-title">📋 Type de licence</h3>
+            <div class="form-row">
+              <div class="field">
+                <label>Type <span class="required">*</span></label>
+                <select id="genType" onchange="app.onTypeChange()" required>
+                  <option value="perpetual">Perpétuelle (pas d'expiration)</option>
+                  <option value="subscription">Abonnement</option>
+                  <option value="trial">Essai 7 jours</option>
+                </select>
+              </div>
+              <div class="field" id="durationRow" style="display:none">
+                <label>Durée</label>
+                <select id="genDuration" onchange="app.onDurationChange()">
+                  <option value="1m">1 mois</option>
+                  <option value="6m">6 mois</option>
+                  <option value="1y" selected>1 an</option>
+                  <option value="custom">Personnalisée</option>
+                </select>
+              </div>
+              <div class="field hidden" id="customDateRow">
+                <label>Date d'expiration</label>
+                <input type="date" id="genExpiresAt">
+              </div>
+            </div>
+          </div>
+
+          <!-- Modules -->
+          <div class="form-group">
+            <h3 class="form-section-title">📦 Modules activés</h3>
+            <div class="modules-grid">
+              <label class="module-check module-disabled">
+                <input type="checkbox" value="caisse" checked disabled>
+                <span class="module-icon">🛒</span>
+                <span class="module-name">Caisse</span>
+                <span class="module-note">Inclus</span>
+              </label>
+              <label class="module-check">
+                <input type="checkbox" value="commandes" class="mod-check">
+                <span class="module-icon">📋</span>
+                <span class="module-name">Commandes</span>
+              </label>
+              <label class="module-check">
+                <input type="checkbox" value="cuisine" class="mod-check">
+                <span class="module-icon">👨‍🍳</span>
+                <span class="module-name">Cuisine</span>
+              </label>
+              <label class="module-check">
+                <input type="checkbox" value="historique" class="mod-check">
+                <span class="module-icon">📜</span>
+                <span class="module-name">Historique</span>
+              </label>
+              <label class="module-check">
+                <input type="checkbox" value="statistiques" class="mod-check">
+                <span class="module-icon">📊</span>
+                <span class="module-name">Statistiques</span>
+              </label>
+              <label class="module-check">
+                <input type="checkbox" value="gestion" class="mod-check">
+                <span class="module-icon">📦</span>
+                <span class="module-name">Gestion</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div class="form-group">
+            <div class="field">
+              <label>Notes internes (non envoyées au client)</label>
+              <textarea id="genNotes" rows="2" placeholder="Réf commande, notes..."></textarea>
+            </div>
+          </div>
+
+          <!-- Résultat -->
+          <div id="genResult" class="result-box hidden">
+            <div class="result-header">✅ Licence générée avec succès !</div>
+            <div class="result-key-wrap">
+              <span class="result-label">Clé :</span>
+              <code id="genKeyDisplay" class="result-key"></code>
+              <button type="button" onclick="app.copyKey()" class="btn btn-ghost btn-sm">📋 Copier</button>
+            </div>
+            <p class="result-note">📧 Un email a été envoyé automatiquement au client.</p>
+          </div>
+
+          <div id="genError" class="error-msg hidden"></div>
+
+          <div class="form-actions">
+            <button type="button" onclick="app.resetForm()" class="btn btn-ghost">Réinitialiser</button>
+            <button type="submit" id="genSubmitBtn" class="btn btn-primary">
+              🔑 Générer et envoyer par email
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </section>
+
+    <!-- ── PARAMÈTRES SMTP ──────────────────────────────────────── -->
+    <section id="smtp-section" class="section hidden">
+      <div class="section-header">
+        <h2>Paramètres SMTP</h2>
+      </div>
+
+      <div class="form-card" style="max-width:520px">
+
+        <!-- Info -->
+        <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:.82rem;color:#a5b4fc;line-height:1.6">
+          <strong>ℹ️ Configuration</strong><br>
+          Les paramètres SMTP sont définis dans <code style="background:rgba(255,255,255,.1);padding:.1rem .3rem;border-radius:4px">server/.env</code>.
+          Utilisez ce formulaire pour tester votre configuration.
+        </div>
+
+        <!-- Config actuelle (lecture seule) -->
+        <div class="form-group">
+          <h3 class="form-section-title">📋 Configuration actuelle (.env)</h3>
+          <div id="smtpConfigDisplay" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:1rem;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text3);line-height:1.8">
+            Chargement...
+          </div>
+        </div>
+
+        <!-- Test connexion -->
+        <div class="form-group">
+          <h3 class="form-section-title">🔌 Test de connexion</h3>
+          <button onclick="app.testSmtp()" class="btn btn-ghost" id="smtpTestBtn">
+            🔌 Tester la connexion SMTP
+          </button>
+          <div id="smtpTestResult" class="hidden" style="margin-top:.75rem"></div>
+        </div>
+
+        <!-- Envoyer email de test -->
+        <div class="form-group">
+          <h3 class="form-section-title">📨 Email de test</h3>
+          <div class="form-row" style="grid-template-columns:1fr auto;align-items:flex-end">
+            <div class="field">
+              <label>Adresse destinataire</label>
+              <input type="email" id="smtpTestEmail" placeholder="vous@exemple.fr">
+            </div>
+            <button onclick="app.sendTestEmail()" class="btn btn-primary" id="smtpSendBtn">
+              📨 Envoyer
+            </button>
+          </div>
+          <div id="smtpSendResult" class="hidden" style="margin-top:.75rem"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODALS
+════════════════════════════════════════════════════════════ -->
+
+<!-- Modal Détail licence -->
+<div id="detailModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="app.closeModal('detailModal')"></div>
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="detailTitle">Détail licence</h3>
+      <button onclick="app.closeModal('detailModal')" class="modal-close">✕</button>
+    </div>
+    <div id="detailContent" class="modal-body">Chargement...</div>
+    <div class="modal-footer">
+      <button onclick="app.closeModal('detailModal')" class="btn btn-ghost">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Historique -->
+<div id="eventsModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="app.closeModal('eventsModal')"></div>
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Historique des événements</h3>
+      <button onclick="app.closeModal('eventsModal')" class="modal-close">✕</button>
+    </div>
+    <div id="eventsContent" class="modal-body modal-body-scroll">Chargement...</div>
+    <div class="modal-footer">
+      <button onclick="app.closeModal('eventsModal')" class="btn btn-ghost">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Étendre expiration -->
+<div id="extendModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="app.closeModal('extendModal')"></div>
+  <div class="modal-box modal-box-sm">
+    <div class="modal-header">
+      <h3>Étendre l'expiration</h3>
+      <button onclick="app.closeModal('extendModal')" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="extendLicenceId">
+      <div class="field">
+        <label>Nouvelle date d'expiration</label>
+        <input type="date" id="extendDate" class="mt-1">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="app.closeModal('extendModal')" class="btn btn-ghost">Annuler</button>
+      <button onclick="app.confirmExtend()" class="btn btn-primary">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toastContainer"></div>
+
+</body>
+</html>
+

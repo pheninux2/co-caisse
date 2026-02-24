@@ -4,7 +4,7 @@
  *
  * Routes PUBLIQUES (sans JWT) — accessibles avant/sans connexion :
  *   GET  /api/licences/status   → état courant de la licence
- *   POST /api/licences/trial    → démarre l'essai 30 jours
+ *   POST /api/licences/trial    → démarre l'essai 7 jours
  *   POST /api/licences/activate → active une clé reçue
  */
 
@@ -36,10 +36,10 @@ router.get('/status', async (req, res) => {
   }
 });
 
-// ── POST /trial — Démarre l'essai gratuit 30 jours ───────────────────────────
+// ── POST /trial — Démarre l'essai gratuit 7 jours ────────────────────────────
 // Bloqué si une licence existe déjà.
 // Body : {} (aucun paramètre requis)
-// Réponse succès : { success: true, licence: { … }, daysRemaining: 30 }
+// Réponse succès : { success: true, licence: { … }, daysRemaining: 7 }
 // Réponse erreur  : { success: false, error: "…" }
 router.post('/trial', async (req, res) => {
   try {

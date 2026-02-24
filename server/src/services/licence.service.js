@@ -160,7 +160,7 @@ export async function validateLicence(key, db) {
 }
 
 /**
- * Démarre l'essai gratuit 30 jours.
+ * Démarre l'essai gratuit 7 jours.
  * Bloqué si une licence existe déjà (trial ou autre).
  *
  * @param {object} db  Instance Database

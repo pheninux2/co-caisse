@@ -1,0 +1,8 @@
+.env
+server/.env
+mariaDB-docker/.env
+node_modules/
+dist/
+dist-electron/
+*.log
+

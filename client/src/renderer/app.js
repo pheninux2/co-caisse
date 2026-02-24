@@ -152,7 +152,8 @@ class CocaisseApp {
         this._showTrialBanner(data.daysRemaining);
       }
 
-      // ── Cas 5 : Licence active (perpetual/subscription) → rien ───────
+      // ── Cas 5 : Licence active → badge dans le header ────────────────
+      this._updateLicenceBadge(data);
       return true;
 
     } catch (e) {
@@ -171,13 +172,13 @@ class CocaisseApp {
     if (mode === 'welcome') {
       content.innerHTML = `
         <p class="text-gray-600 mb-6 text-sm leading-relaxed">
-          Bienvenue ! Démarrez votre essai gratuit de <strong>30 jours</strong><br>
+          Bienvenue ! Démarrez votre essai gratuit de <strong>7 jours</strong><br>
           ou entrez votre clé de licence si vous en avez une.
         </p>
         <div class="space-y-3">
           <button onclick="app.startTrial()"
             class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl transition shadow-md">
-            🚀 Démarrer l'essai gratuit 30 jours
+            🚀 Démarrer l'essai gratuit 7 jours
           </button>
           <button onclick="app._showLicenceScreen('activate')"
             class="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition">
@@ -193,7 +194,7 @@ class CocaisseApp {
         </div>
         <h2 class="text-xl font-bold text-gray-800 mb-2">Essai expiré</h2>
         <p class="text-gray-600 mb-6 text-sm leading-relaxed">
-          Votre essai gratuit de 30 jours est terminé.<br>
+          Votre essai gratuit de 7 jours est terminé.<br>
           Activez votre licence pour continuer à utiliser Co-Caisse.
         </p>
         <div class="space-y-3">
@@ -231,21 +232,41 @@ class CocaisseApp {
     } else if (mode === 'activate') {
       content.innerHTML = `
         <h2 class="text-xl font-bold text-gray-800 mb-4">Activer une licence</h2>
-        <div class="mb-4 text-left">
-          <label class="block text-xs font-semibold text-gray-600 mb-1">Clé de licence</label>
+        <div class="mb-3 text-left">
+          <label class="block text-xs font-semibold text-gray-600 mb-1">Clé de licence <span class="text-red-500">*</span></label>
           <input type="text" id="licenceKeyInput"
             placeholder="CCZ-XXXX-XXXX-XXXX"
             class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono tracking-wider uppercase"
             oninput="this.value = this.value.toUpperCase()">
         </div>
+        <div class="mb-4 text-left">
+          <label class="block text-xs font-semibold text-gray-600 mb-2">Modules inclus dans votre licence <span class="text-red-500">*</span></label>
+          <p class="text-xs text-gray-400 mb-2">Cochez exactement les modules indiqués dans votre email de licence.</p>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg cursor-not-allowed opacity-60 text-xs text-gray-500">
+              <input type="checkbox" checked disabled class="accent-indigo-500"> 🛒 Caisse <em>(inclus)</em>
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:border-indigo-300 transition text-xs">
+              <input type="checkbox" id="mod_cuisine" value="cuisine" class="accent-indigo-500"> 🍳 Cuisine
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:border-indigo-300 transition text-xs">
+              <input type="checkbox" id="mod_commandes" value="commandes" class="accent-indigo-500"> 📋 Commandes
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:border-indigo-300 transition text-xs">
+              <input type="checkbox" id="mod_historique" value="historique" class="accent-indigo-500"> 📜 Historique
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:border-indigo-300 transition text-xs">
+              <input type="checkbox" id="mod_statistiques" value="statistiques" class="accent-indigo-500"> 📊 Statistiques
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:border-indigo-300 transition text-xs">
+              <input type="checkbox" id="mod_gestion" value="gestion" class="accent-indigo-500"> 📦 Gestion
+            </label>
+          </div>
+        </div>
         <div class="space-y-3">
           <button onclick="app.activateLicenceKey()"
             class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl transition shadow-md">
             ✅ Activer
-          </button>
-          <button onclick="app._showLicenceScreen('welcome')"
-            class="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition text-sm">
-            ← Retour
           </button>
         </div>
         <div id="licenceActivateError" class="hidden mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-xs"></div>
@@ -271,6 +292,32 @@ class CocaisseApp {
     // Décale le header de l'app pour ne pas qu'il soit masqué
     const header = document.querySelector('#app header');
     if (header) header.style.marginTop = '28px';
+  }
+
+  // ── Masque le bandeau trial ────────────────────────────────────────────────
+  _hideTrialBanner() {
+    const banner = document.getElementById('trialBanner');
+    if (!banner) return;
+    banner.classList.add('hidden');
+    const header = document.querySelector('#app header');
+    if (header) header.style.marginTop = '';
+  }
+
+  // ── Affiche le badge de licence dans le header ────────────────────────────
+  _updateLicenceBadge(status) {
+    const badge = document.getElementById('licenceBadge');
+    if (!badge || !status) return;
+
+    const configs = {
+      perpetual:    { label: '✓ Perpétuelle',  cls: 'bg-green-100 text-green-700'  },
+      subscription: { label: '◆ Abonnement',   cls: 'bg-blue-100 text-blue-700'    },
+      trial:        { label: '⏱ Essai',        cls: 'bg-amber-100 text-amber-700'  },
+    };
+
+    const cfg = configs[status.type] || { label: '✓ Activée', cls: 'bg-gray-100 text-gray-600' };
+    badge.textContent = cfg.label;
+    badge.className   = `text-xs px-2 py-0.5 rounded-full font-semibold ${cfg.cls}`;
+    badge.classList.remove('hidden');
   }
 
   // ── Démarre l'essai gratuit ───────────────────────────────────────────────
@@ -305,6 +352,10 @@ class CocaisseApp {
       return;
     }
 
+    // Collecter les modules cochés
+    const moduleCheckboxes = document.querySelectorAll('#licenceContent input[type="checkbox"]:not(:disabled):checked');
+    const selectedModules  = ['caisse', ...Array.from(moduleCheckboxes).map(cb => cb.value)];
+
     const btn = document.querySelector('#licenceContent button');
     if (btn) { btn.disabled = true; btn.textContent = 'Activation...'; }
 
@@ -312,16 +363,22 @@ class CocaisseApp {
       const res  = await fetch(`${API_URL}/licences/activate`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ key }),
+        body:    JSON.stringify({ key, modules: selectedModules }),
       });
       const data = await res.json();
 
       if (data.success) {
         this.licenceStatus = data.status;
         document.getElementById('licenceScreen').classList.add('hidden');
+
         if (data.status?.type === 'trial') {
           this._showTrialBanner(data.status.daysRemaining);
+        } else {
+          // Licence perpetual ou subscription → cacher le bandeau essai
+          this._hideTrialBanner();
         }
+
+        this._updateLicenceBadge(data.status);
         this.showLoginScreen();
         this.toastSuccess('Licence activée avec succès !');
       } else {
@@ -354,8 +411,8 @@ class CocaisseApp {
     const encoded = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
     // Electron via preload bridge
-    if (window.api && typeof window.api.openExternal === 'function') {
-      window.api.openExternal(encoded);
+    if (window.electron && typeof window.electron.openExternal === 'function') {
+      window.electron.openExternal(encoded);
       return;
     }
 
@@ -438,6 +495,12 @@ class CocaisseApp {
 
     const lockedModules = [];
 
+    // ── Réinitialiser la visibilité de tous les onglets nav ──────────────
+    // (nécessaire pour le re-login sans rechargement de page)
+    document.querySelectorAll('.nav-tab, .mobile-nav-item').forEach(item => {
+      item.classList.remove('hidden');
+    });
+
     // ── Filtrage des onglets (desktop + mobile) ──────────────────────────
     const filterTab = (item) => {
       const allowedRoles   = (item.getAttribute('data-role') || '').split(',').map(r => r.trim());
@@ -465,9 +528,9 @@ class CocaisseApp {
         }
       }
 
-      // Supprimer du DOM si non autorisé
+      // Masquer si non autorisé (classList plutôt que remove — permettre re-login)
       if (!roleOk || !moduleOk) {
-        item.remove();
+        item.classList.add('hidden');
       }
     };
 
@@ -475,10 +538,19 @@ class CocaisseApp {
     document.querySelectorAll('.mobile-nav-item').forEach(filterTab);
 
     // ── Onglet 🔒 Plus de fonctionnalités ───────────────────────────────
+    // Visibilité basée uniquement sur la LICENCE (indépendant du rôle) :
+    // visible si au moins 1 module (hors caisse) n'est pas dans la licence.
     const lockedBtn       = document.getElementById('lockedModulesBtn');
     const lockedMobileBtn = document.getElementById('lockedModulesMobileBtn');
-    if (lockedModules.length > 0) {
-      this._lockedModules = lockedModules;
+
+    const licenceMissing = activeModules.length > 0
+      ? Object.keys(MODULE_CATALOG)
+          .filter(id => id !== 'caisse' && !activeModules.includes(id))
+          .map(id => ({ id, ...MODULE_CATALOG[id] }))
+      : [];
+
+    if (licenceMissing.length > 0) {
+      this._lockedModules = licenceMissing;
       lockedBtn?.classList.remove('hidden');
       lockedMobileBtn?.classList.remove('hidden');
     } else {
@@ -597,7 +669,8 @@ class CocaisseApp {
     const password = document.getElementById('loginPassword').value;
 
     try {
-      const response = await this.apiFetch(`${API_URL}/users/login`, {
+      // Ne pas utiliser apiFetch ici — un 401 sur login = mauvais mdp, pas session expirée
+      const response = await fetch(`${API_URL}/users/login`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ username, password }),
@@ -625,7 +698,7 @@ class CocaisseApp {
       }
     } catch (error) {
       console.error('Erreur de connexion:', error);
-      this.toastError('Erreur de connexion: ' + error.message);
+      this.toastError('Erreur réseau — vérifiez la connexion au serveur');
     }
   }
 
@@ -1140,18 +1213,34 @@ class CocaisseApp {
   }
 
   async loadDashboard() {
+    const modules         = this.licenceStatus?.modules || [];
+    // fail open si licence non chargée (licenceStatus null)
+    const hasHistorique   = !this.licenceStatus || modules.includes('historique');
+    const hasStatistiques = !this.licenceStatus || modules.includes('statistiques');
+
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const response = await this.apiFetch(`${API_URL}/transactions/summary/daily?date=${today}`);
-      const summary = await response.json();
+      if (hasHistorique) {
+        const today    = new Date().toISOString().split('T')[0];
+        const response = await this.apiFetch(`${API_URL}/transactions/summary/daily?date=${today}`);
+        const summary  = await response.json();
 
-      document.getElementById('dailySales').textContent        = ((summary && summary.total_amount)       || 0).toFixed(2) + ' €';
-      document.getElementById('dailyTransactions').textContent = (summary && summary.transaction_count)   || 0;
-      document.getElementById('dailyTax').textContent          = ((summary && summary.total_tax)          || 0).toFixed(2) + ' €';
-      document.getElementById('dailyDiscount').textContent     = ((summary && summary.total_discount)     || 0).toFixed(2) + ' €';
+        document.getElementById('dailySales').textContent        = ((summary && summary.total_amount)     || 0).toFixed(2) + ' €';
+        document.getElementById('dailyTransactions').textContent = (summary && summary.transaction_count) || 0;
+        document.getElementById('dailyTax').textContent          = ((summary && summary.total_tax)        || 0).toFixed(2) + ' €';
+        document.getElementById('dailyDiscount').textContent     = ((summary && summary.total_discount)   || 0).toFixed(2) + ' €';
 
-      await this.loadRecentTransactions();
-      await this.loadPaymentMethodsChart();
+        await this.loadRecentTransactions();
+      } else {
+        const recentContainer = document.getElementById('recentTransactions');
+        if (recentContainer) recentContainer.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">Module Historique non activé</p>';
+      }
+
+      if (hasStatistiques) {
+        await this.loadPaymentMethodsChart();
+      } else {
+        const chartContainer = document.getElementById('paymentMethodsChart');
+        if (chartContainer) chartContainer.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">Module Statistiques non activé</p>';
+      }
     } catch (error) {
       console.error('Error loading dashboard:', error);
     }
@@ -4033,78 +4122,6 @@ CocaisseApp.prototype.loadAdminLicences = async function() {
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-red-500">Erreur : ${e.message}</td></tr>`;
   }
-};
-
-// ── Ouvre la modal de génération ─────────────────────────────────────────────
-CocaisseApp.prototype.openGenerateLicenceModal = function() {
-  // Reset formulaire
-  document.getElementById('genClientName').value = '';
-  document.getElementById('genType').value = 'perpetual';
-  document.getElementById('genExpiresAt').value = '';
-  document.getElementById('genResult').classList.add('hidden');
-  document.getElementById('genExpiryRow').classList.add('hidden');
-  document.querySelectorAll('.gen-module-check').forEach(cb => cb.checked = false);
-  const btn = document.getElementById('genSubmitBtn');
-  if (btn) { btn.disabled = false; btn.textContent = '🔑 Générer'; }
-  this.openModal('generateLicenceModal');
-};
-
-// Affiche/masque le champ expiration selon le type
-CocaisseApp.prototype.onGenTypeChange = function() {
-  const type = document.getElementById('genType').value;
-  const row  = document.getElementById('genExpiryRow');
-  if (row) row.classList.toggle('hidden', type !== 'subscription');
-};
-
-// ── Génère une nouvelle clé ──────────────────────────────────────────────────
-CocaisseApp.prototype.generateLicence = async function(event) {
-  event.preventDefault();
-  const btn        = document.getElementById('genSubmitBtn');
-  const clientName = document.getElementById('genClientName').value.trim();
-  const type       = document.getElementById('genType').value;
-  const expiresAt  = document.getElementById('genExpiresAt').value || null;
-  const modules    = ['caisse', ...Array.from(document.querySelectorAll('.gen-module-check:checked')).map(cb => cb.value)];
-
-  if (!clientName) { this.toastError('Nom du client requis'); return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Génération...';
-
-  try {
-    const res  = await this.apiFetch(`${API_URL}/admin/licences/generate`, {
-      method:  'POST',
-      headers: this.getAuthHeaders(),
-      body:    JSON.stringify({ clientName, modules, type, expiresAt }),
-    });
-    const data = await res.json();
-
-    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
-
-    // Afficher la clé générée
-    document.getElementById('genKeyDisplay').textContent = data.key;
-    document.getElementById('genResult').classList.remove('hidden');
-    btn.textContent = '✅ Générée !';
-    this._lastGeneratedKey = data.key;
-
-    // Rafraîchir la liste
-    this.loadAdminLicences();
-    this.toastSuccess(`Licence générée pour ${clientName}`);
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = '🔑 Générer';
-    this.toastError(e.message);
-  }
-};
-
-// ── Copie la clé dans le presse-papiers ─────────────────────────────────────
-CocaisseApp.prototype.copyLicenceKey = function() {
-  const key = this._lastGeneratedKey;
-  if (!key) return;
-  navigator.clipboard.writeText(key).then(() => {
-    this.toastSuccess('Clé copiée dans le presse-papiers !');
-  }).catch(() => {
-    this.toastError('Impossible de copier — copiez manuellement');
-  });
 };
 
 // ── Suspend une licence ──────────────────────────────────────────────────────

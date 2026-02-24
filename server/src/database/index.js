@@ -276,11 +276,17 @@ class Database {
         // On filtre les lignes vides, commentaires purs et SET redondants
         const statements = sql
           .split(';')
-          .map(s => s.trim())
+          .map(s => {
+            // Supprimer les lignes de commentaires en tête (-- ...)
+            // pour éviter que "-- commentaire\nCREATE TABLE" soit filtré
+            return s
+              .split('\n')
+              .filter(line => !line.trim().startsWith('--'))
+              .join('\n')
+              .trim();
+          })
           .filter(s => {
             if (!s || s.length === 0) return false;
-            if (s.startsWith('--'))   return false;
-            // SET FOREIGN_KEY_CHECKS et SET NAMES sont gérés par le runner
             const upper = s.toUpperCase();
             if (upper.startsWith('SET FOREIGN_KEY_CHECKS')) return false;
             if (upper.startsWith('SET NAMES'))              return false;

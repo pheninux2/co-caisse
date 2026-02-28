@@ -1,4 +1,4 @@
-﻿// Import styles
+﻿
 import './styles/main.css';
 
 // API_URL injecté par webpack DefinePlugin depuis client/.env
@@ -8,6 +8,9 @@ const API_URL = (typeof process !== 'undefined' && process.env && process.env.AP
 
 // Token JWT stocké en mémoire (complément du localStorage pour la persistance)
 let _jwtToken = null;
+
+// Flag global : évite les redirections/notifications multiples lors d'un 401
+let _isRedirecting = false;
 
 class CocaisseApp {
   constructor() {
@@ -46,14 +49,38 @@ class CocaisseApp {
     const headers = { ...this.getAuthHeaders(), ...(options.headers || {}) };
     const res = await fetch(url, { ...options, headers });
     if (res.status === 401) {
-      // Lire le message serveur si disponible
-      const body = await res.json().catch(() => ({}));
-      const msg  = body.error || 'Session expirée — veuillez vous reconnecter';
-      this.toastError(msg);
-      setTimeout(() => this.logout(), 1500); // laisser le toast s'afficher
-      throw new Error(msg);
+      this._handleTokenExpired();
+      throw new Error('session_expired');
     }
     return res;
+  }
+
+  // ── Gestion centralisée de l'expiration du token ─────────────────────────
+  // Appelée par apiFetch sur tout 401. Le flag _isRedirecting garantit
+  // qu'un seul traitement se déclenche même si plusieurs requêtes échouent
+  // en parallèle.
+  _handleTokenExpired() {
+    if (_isRedirecting) return;
+    _isRedirecting = true;
+
+    // Stopper proprement le polling des alertes et vider les données
+    this.stopAlertPolling();
+    this.alertsRaw = [];
+    this.alerts = [];
+
+    // Effacer immédiatement toutes les notifications visibles
+    this.clearAllToasts();
+
+    // Nettoyage de la session
+    _jwtToken = null;
+    localStorage.removeItem('jwt_token');
+    localStorage.removeItem('currentUser');
+    this.currentUser = null;
+    this.cart = [];
+    this.currentDiscount = 0;
+
+    // Redirection silencieuse vers l'écran de connexion (sans toast, sans popin)
+    this.showLoginScreen();
   }
 
   async init() {
@@ -90,18 +117,17 @@ class CocaisseApp {
           localStorage.setItem('currentUser', JSON.stringify(freshUser));
           console.log('👤 Session restaurée:', freshUser.username, '(' + freshUser.role + ')');
           this.showMainApp();
-        } else if (checkRes.status === 401) {
-          console.log('⚠️ Token expiré, reconnexion requise');
-          localStorage.removeItem('jwt_token');
-          localStorage.removeItem('currentUser');
-          _jwtToken = null;
-          this.showLoginScreen();
         } else {
+          // Autre erreur (ex: 5xx) → conserver la session locale
           console.warn('⚠️ Serveur inaccessible, session locale conservée');
           this.currentUser = JSON.parse(savedUser);
           this.showMainApp();
         }
       } catch (e) {
+        // Si l'erreur vient d'un 401 (session expirée), _handleTokenExpired() a déjà
+        // effectué la redirection silencieuse → on ne fait rien d'autre
+        if (e.message === 'session_expired') return;
+
         console.warn('⚠️ Serveur inaccessible:', e.message);
         try {
           this.currentUser = JSON.parse(savedUser);
@@ -430,6 +456,9 @@ class CocaisseApp {
   }
 
   showLoginScreen() {
+    // Réinitialiser le flag de redirection pour permettre de futures sessions
+    _isRedirecting = false;
+
     const loginScreen = document.getElementById('loginScreen');
     const appDiv = document.getElementById('app');
 
@@ -2428,7 +2457,17 @@ ${dash}
   }
 
   // ===== TOAST NOTIFICATIONS =====
+
+  // Supprime immédiatement toutes les notifications visibles à l'écran
+  clearAllToasts() {
+    const container = document.getElementById('toastContainer');
+    if (container) container.innerHTML = '';
+  }
+
   toast(message, type = 'info', duration = 3000) {
+    // Ne pas afficher de toast si une redirection pour session expirée est en cours
+    if (_isRedirecting) return;
+
     const container = document.getElementById('toastContainer');
     if (!container) return;
 
@@ -2493,6 +2532,9 @@ ${dash}
 
   // ===== CONFIRM DIALOG =====
   confirm(message, options = {}) {
+    // Ne pas afficher de popin si une redirection pour session expirée est en cours
+    if (_isRedirecting) return Promise.resolve(false);
+
     return new Promise((resolve) => {
       const dialog = document.getElementById('confirmDialog');
       const titleEl = document.getElementById('confirmTitle');
@@ -2593,6 +2635,14 @@ ${dash}
     });
 
     if (confirmed) {
+      // Stopper proprement le polling des alertes et vider les données
+      this.stopAlertPolling();
+      this.alertsRaw = [];
+      this.alerts = [];
+
+      // Effacer immédiatement toutes les notifications visibles
+      this.clearAllToasts();
+
       // Nettoyer le token JWT
       _jwtToken = null;
       localStorage.removeItem('jwt_token');
@@ -2602,9 +2652,6 @@ ${dash}
       this.cart = [];
       this.currentDiscount = 0;
 
-      // Arrêter le polling des alertes
-      if (this.alertPollingInterval) clearInterval(this.alertPollingInterval);
-      if (this.alertDisplayInterval) clearInterval(this.alertDisplayInterval);
 
       this.showLoginScreen();
       this.toastInfo('Vous avez été déconnecté');
@@ -3352,6 +3399,12 @@ CocaisseApp.prototype._computeLevel = function(alert) {
 
 // ★ Cœur du système : appelé toutes les 5s, déclenche les notifications au bon moment
 CocaisseApp.prototype._checkAndNotify = function() {
+  // Ne pas notifier si l'utilisateur est déconnecté
+  if (!this.currentUser || !_jwtToken) {
+    this.stopAlertPolling();
+    return;
+  }
+
   if (!this.alertsRaw || this.alertsRaw.length === 0) {
     this.alerts = [];
     this.updateAlertBadge(0);
@@ -3435,6 +3488,9 @@ CocaisseApp.prototype._refreshAlertDisplay = function() {
 };
 
 CocaisseApp.prototype.loadAlerts = async function() {
+  // Ne pas charger les alertes si l'utilisateur est déconnecté
+  if (!this.currentUser || !_jwtToken) return;
+
   try {
     const response = await this.apiFetch(`${API_URL}/orders/alerts/pending`, {
       headers: this.getAuthHeaders()

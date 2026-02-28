@@ -2342,7 +2342,9 @@ ${dash}
         alert_kitchen_minutes: parseInt(document.getElementById('alertKitchenMinutes')?.value) || 20,
         alert_ready_minutes: parseInt(document.getElementById('alertReadyMinutes')?.value) || 5,
         alert_served_minutes: parseInt(document.getElementById('alertServedMinutes')?.value) || 30,
-        alert_remind_after_dismiss: parseInt(document.getElementById('alertRemindAfterDismiss')?.value) || 10
+        alert_remind_after_dismiss: parseInt(document.getElementById('alertRemindAfterDismiss')?.value) || 10,
+        // NF525 — chaînage fiscal
+        fiscal_chain_enabled: document.getElementById('fiscalChainEnabled')?.checked ? 1 : 0,
       };
 
       // Sauvegarder dans l'API
@@ -2357,6 +2359,9 @@ ${dash}
       this.settings = settings;
       localStorage.setItem('cocaisse_settings', JSON.stringify(settings));
       this.toastSuccess('Paramètres enregistrés');
+
+      // Rafraîchir le statut fiscal après sauvegarde
+      this.loadFiscalStatus();
     } catch (error) {
       console.error('Error saving settings:', error);
       this.toastError('Erreur: ' + error.message);
@@ -2392,6 +2397,15 @@ ${dash}
           document.getElementById('alertReadyMinutes').value = settings.alert_ready_minutes || 5;
           document.getElementById('alertServedMinutes').value = settings.alert_served_minutes || 30;
           document.getElementById('alertRemindAfterDismiss').value = settings.alert_remind_after_dismiss || 10;
+
+          // NF525 — chaînage fiscal
+          const fiscalCb = document.getElementById('fiscalChainEnabled');
+          if (fiscalCb) fiscalCb.checked = settings.fiscal_chain_enabled === 1;
+        }
+
+        // Charger le statut fiscal (admin only)
+        if (this.currentUser?.role === 'admin') {
+          this.loadFiscalStatus();
         }
       }
     } catch (error) {
@@ -2399,7 +2413,152 @@ ${dash}
     }
   }
 
-  // ===== DATA EXPORT/IMPORT =====
+  // ===== NF525 — CHAÎNAGE FISCAL =====
+
+  /**
+   * Charge et affiche le statut de la chaîne fiscale depuis /api/fiscal/status
+   */
+  async loadFiscalStatus() {
+    const statusEl  = document.getElementById('fiscalChainStatus');
+    const dotEl     = document.getElementById('fiscalChainStatusDot');
+    const textEl    = document.getElementById('fiscalChainStatusText');
+    const detailsEl = document.getElementById('fiscalChainDetails');
+    if (!statusEl) return;
+
+    try {
+      const res  = await this.apiFetch(`${API_URL}/fiscal/status`);
+      if (!res.ok) {
+        // Si l'endpoint n'existe pas encore (migration pas jouée), on masque
+        statusEl.classList.add('hidden');
+        return;
+      }
+      const data = await res.json();
+
+      statusEl.classList.remove('hidden');
+
+      if (!data.hmac_key_set) {
+        dotEl.className   = 'w-2 h-2 rounded-full bg-red-500 inline-block';
+        textEl.textContent = '⚠️ FISCAL_HMAC_KEY manquante dans le .env serveur !';
+        detailsEl.textContent = 'Ajoutez FISCAL_HMAC_KEY dans server/.env pour activer le chaînage.';
+        return;
+      }
+
+      if (data.enabled) {
+        dotEl.className   = 'w-2 h-2 rounded-full bg-green-500 inline-block';
+        textEl.textContent = `✅ Chaînage actif — ${data.chain_length} transaction(s) chaînée(s)`;
+        detailsEl.textContent = data.unchained_count > 0
+          ? `⚠️ ${data.unchained_count} transaction(s) antérieure(s) non chaînées (avant activation)`
+          : `Dernière transaction : ${data.last_tx_id ? data.last_tx_id.slice(0, 8) + '…' : 'aucune'}`;
+      } else {
+        dotEl.className   = 'w-2 h-2 rounded-full bg-gray-400 inline-block';
+        textEl.textContent = 'Chaînage désactivé — les nouvelles transactions ne seront pas signées';
+        detailsEl.textContent = data.chain_length > 0
+          ? `${data.chain_length} transaction(s) déjà chaînée(s) conservées.`
+          : '';
+      }
+    } catch (e) {
+      statusEl.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Déclenche la vérification de l'intégrité de la chaîne fiscale.
+   * Appelle GET /api/fiscal/verify-chain et affiche le résultat.
+   */
+  async verifyFiscalChain() {
+    const btn       = document.getElementById('btnVerifyChain');
+    const resultEl  = document.getElementById('fiscalVerifyResult');
+    const resetBlock = document.getElementById('fiscalResetBlock');
+    if (!resultEl) return;
+
+    // Cacher le bloc reset au départ
+    if (resetBlock) resetBlock.classList.add('hidden');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Vérification en cours…'; }
+
+    try {
+      const res  = await this.apiFetch(`${API_URL}/fiscal/verify-chain`);
+      const data = await res.json();
+
+      if (data.error) {
+        resultEl.className = 'mt-3 p-3 rounded-lg border text-xs bg-red-50 border-red-200 text-red-700';
+        resultEl.innerHTML = `⚠️ Erreur : ${data.error}`;
+        resultEl.classList.remove('hidden');
+        return;
+      }
+
+      if (data.ok) {
+        resultEl.className = 'mt-3 p-3 rounded-lg border text-xs bg-green-50 border-green-200 text-green-700';
+        resultEl.innerHTML = `
+          ✅ <strong>Chaîne intègre</strong> — ${data.verified}/${data.total} transaction(s) vérifiée(s)<br>
+          <span class="text-green-600">Vérifiée le ${new Date(data.verified_at).toLocaleString('fr-FR')}</span>
+        `;
+        if (resetBlock) resetBlock.classList.add('hidden');
+      } else {
+        const anomList = (data.anomalies || []).slice(0, 5).map(a =>
+          `<li>Position #${a.position} — TX <code>${(a.tx_id||'').slice(0,8)}…</code> — ${a.type}</li>`
+        ).join('');
+
+        resultEl.className = 'mt-3 p-3 rounded-lg border text-xs bg-red-50 border-red-200 text-red-700';
+        resultEl.innerHTML = `
+          🚨 <strong>${data.anomalies?.length || 0} anomalie(s) détectée(s) !</strong>
+          ${data.total > 0 ? `<br>${data.verified}/${data.total} transaction(s) OK` : ''}
+          <ul class="mt-2 pl-4 list-disc space-y-0.5">${anomList}</ul>
+        `;
+        // Afficher le bloc de recalcul
+        if (resetBlock) resetBlock.classList.remove('hidden');
+      }
+      resultEl.classList.remove('hidden');
+    } catch (e) {
+      resultEl.className = 'mt-3 p-3 rounded-lg border text-xs bg-red-50 border-red-200 text-red-700';
+      resultEl.innerHTML = `⚠️ Erreur réseau : ${e.message}`;
+      resultEl.classList.remove('hidden');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔍 Vérifier l\'intégrité de la chaîne'; }
+    }
+  }
+
+  /**
+   * Recalcule toute la chaîne fiscale avec la clé HMAC actuelle.
+   * À utiliser après un changement de FISCAL_HMAC_KEY dans .env.
+   */
+  async resetFiscalChain() {
+    const confirmed = await this.confirm(
+      'Cette opération va recalculer les hashs de toutes les transactions avec la clé HMAC actuelle.\n\nÀ utiliser uniquement si vous avez changé la FISCAL_HMAC_KEY dans le .env du serveur.\n\nContinuer ?',
+      { title: '🔄 Recalculer la chaîne fiscale', icon: '⚠️', type: 'warning', confirmText: 'Recalculer', cancelText: 'Annuler' }
+    );
+    if (!confirmed) return;
+
+    const btn      = document.getElementById('btnResetChain');
+    const resultEl = document.getElementById('fiscalVerifyResult');
+    const resetBlock = document.getElementById('fiscalResetBlock');
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Recalcul en cours…'; }
+
+    try {
+      const res  = await this.apiFetch(`${API_URL}/fiscal/reset-chain`, { method: 'POST' });
+      const data = await res.json();
+
+      if (data.success) {
+        if (resultEl) {
+          resultEl.className = 'mt-3 p-3 rounded-lg border text-xs bg-green-50 border-green-200 text-green-700';
+          resultEl.innerHTML = `✅ <strong>Recalcul terminé</strong> — ${data.message}`;
+          resultEl.classList.remove('hidden');
+        }
+        if (resetBlock) resetBlock.classList.add('hidden');
+        this.toastSuccess(`✅ ${data.message}`);
+        // Rafraîchir le statut
+        this.loadFiscalStatus();
+      } else {
+        this.toastError(data.error || 'Erreur lors du recalcul');
+      }
+    } catch (e) {
+      this.toastError('Erreur réseau : ' + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalculer toute la chaîne avec la clé actuelle'; }
+    }
+  }
+
+
   async dataExport() {
     try {
       const allData = {

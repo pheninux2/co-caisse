@@ -59,7 +59,8 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
       alert_kitchen_minutes = 20,
       alert_ready_minutes = 5,
       alert_served_minutes = 30,
-      alert_remind_after_dismiss = 10
+      alert_remind_after_dismiss = 10,
+      fiscal_chain_enabled = 0,
     } = req.body;
 
     // Vérifier si des settings existent déjà
@@ -86,6 +87,7 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           alert_ready_minutes = ?,
           alert_served_minutes = ?,
           alert_remind_after_dismiss = ?,
+          fiscal_chain_enabled = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?`,
         [
@@ -94,7 +96,8 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           alert_enabled, alert_sound_enabled,
           alert_draft_minutes, alert_validated_minutes, alert_kitchen_minutes,
           alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss,
-          existing.id
+          fiscal_chain_enabled,
+          existing.id,
         ]
       );
     } else {
@@ -106,14 +109,16 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           currency, default_tax_rate, receipt_header, receipt_footer,
           alert_enabled, alert_sound_enabled,
           alert_draft_minutes, alert_validated_minutes, alert_kitchen_minutes,
-          alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss,
+          fiscal_chain_enabled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           uuidv4(), company_name, company_address, company_phone, company_email, tax_number,
           currency, default_tax_rate, receipt_header, receipt_footer,
           alert_enabled, alert_sound_enabled,
           alert_draft_minutes, alert_validated_minutes, alert_kitchen_minutes,
-          alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss
+          alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss,
+          fiscal_chain_enabled
         ]
       );
     }

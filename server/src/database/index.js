@@ -149,6 +149,8 @@ class Database {
           notes            TEXT,
           receipt_number   VARCHAR(100),
           order_id         VARCHAR(36),
+          transaction_hash VARCHAR(64)  DEFAULT NULL
+                                        COMMENT 'HMAC-SHA256 NF525 (null si chaînage non activé)',
           created_at       DATETIME     DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT fk_transaction_user  FOREIGN KEY (user_id)  REFERENCES users(id),
           CONSTRAINT fk_transaction_order FOREIGN KEY (order_id) REFERENCES orders(id)
@@ -212,6 +214,40 @@ class Database {
       // 001_licences.sql (appliquée automatiquement ci-dessous).
       // La DB admin (cocaisse_admin) conserve l'historique complet.
       // La DB client stocke uniquement la clé activée localement.
+
+      // ── fiscal_chain ───────────────────────────────
+      // Singleton NF525 — dernier hash de la chaîne fiscale
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS fiscal_chain (
+          id           INT          NOT NULL DEFAULT 1,
+          last_hash    VARCHAR(64)  NOT NULL DEFAULT 'GENESIS',
+          last_tx_id   VARCHAR(36)  DEFAULT NULL,
+          chain_length BIGINT       NOT NULL DEFAULT 0,
+          updated_at   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      // Insérer le singleton si absent
+      await conn.query(
+        'INSERT IGNORE INTO fiscal_chain (id, last_hash, chain_length) VALUES (1, \'GENESIS\', 0)'
+      );
+
+      // ── fiscal_anomalies ───────────────────────────
+      // Journal des ruptures de chaîne détectées
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS fiscal_anomalies (
+          id            VARCHAR(36)  PRIMARY KEY,
+          detected_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+          tx_id         VARCHAR(36)  NOT NULL,
+          expected_hash VARCHAR(64)  NOT NULL,
+          actual_hash   VARCHAR(64)  DEFAULT NULL,
+          anomaly_type  VARCHAR(50)  DEFAULT 'hash_mismatch',
+          details       TEXT,
+          resolved      TINYINT(1)   DEFAULT 0,
+          resolved_at   DATETIME,
+          resolved_by   VARCHAR(36)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
 
       await conn.query('SET FOREIGN_KEY_CHECKS = 1');
       console.log('✅ Database connected');

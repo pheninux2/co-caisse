@@ -23,6 +23,7 @@ import orderRoutes       from './routes/orders.js';
 import settingsRoutes    from './routes/settings.js';
 import licenceRoutes     from './routes/licences.js';
 import adminRoutes       from './routes/admin.js';
+import fiscalRoutes      from './routes/fiscal.js'; // NF525 anti-fraude TVA
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
@@ -82,6 +83,7 @@ app.use('/api/orders',       authMiddleware, orderRoutes);
 app.use('/api/reports',      authMiddleware, reportRoutes);
 app.use('/api/settings',     authMiddleware, settingsRoutes);
 app.use('/api/admin',        adminRoutes);   // auth + roleCheck admin dans le router
+app.use('/api/fiscal',       authMiddleware, fiscalRoutes); // NF525 anti-fraude TVA
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {

@@ -8,7 +8,10 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/database/seed.js",
-    "schema": "mysql -u $DB_USER -p$DB_PASS $DB_NAME < src/database/schema.sql"
+    "schema": "mysql -u $DB_USER -p$DB_PASS $DB_NAME < src/database/schema.sql",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -22,6 +25,25 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "eslint": "^8.50.0"
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^8.50.0",
+    "supertest": "^7.2.2",
+    "vitest": "^4.0.18"
+  },
+  "vitest": {
+    "environment": "node",
+    "include": ["src/tests/**/*.test.js"],
+    "globals": false,
+    "clearMocks": true,
+    "restoreMocks": true,
+    "coverage": {
+      "provider": "v8",
+      "include": [
+        "src/services/fiscal.service.js",
+        "src/routes/fiscal.js",
+        "src/routes/transactions.js"
+      ],
+      "reporter": ["text", "html", "lcov"]
+    }
   }
 }

@@ -1,11 +1,16 @@
 /**
  * Co-Caisse — Routes transactions
- * Version : 2.0.0 (MariaDB — backticks sur `change`)
+ * Version : 2.1.0 (MariaDB + chaînage fiscal NF525)
  */
 
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { roleCheck } from '../middleware/auth.js';
+import {
+  computeTransactionHash,
+  getChainTail,
+  updateChainTail,
+} from '../services/fiscal.service.js';
 
 const router = express.Router();
 
@@ -30,23 +35,67 @@ router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
       return res.status(401).json({ error: 'Session expirée — veuillez vous reconnecter' });
     }
 
-    // Vérifier qu'aucune valeur n'est undefined (MariaDB strict)
-    const params = [
-      uuidv4(),                                    // id
-      req.userId,                                   // user_id (garanti par authMiddleware)
-      JSON.stringify(Array.isArray(items) ? items : []),
-      subtotal        != null ? Number(subtotal)       : 0,
-      tax             != null ? Number(tax)            : 0,
-      discount        != null ? Number(discount)       : 0,
-      Number(total),
-      payment_method,
-      payment_status  || 'completed',
-      changeAmount    != null ? Number(changeAmount)   : 0,
-      notes           !== undefined ? notes : null,
-      `REC-${Date.now()}`,
-    ];
+    // ── Données de la transaction ────────────────────────────────────────────
+    const txId          = uuidv4();
+    const receiptNumber = `REC-${Date.now()}`;
+
+    // txDate : format "YYYY-MM-DD HH:MM:SS" en UTC
+    // Doit correspondre EXACTEMENT à ce que MariaDB stocke et à ce que mysql2 retourne
+    // (mysql2 retourne un objet Date UTC → normalizeDateStr() lui applique le même format)
+    const _now = new Date();
+    const _pad = n => String(n).padStart(2, '0');
+    const txDate = `${_now.getUTCFullYear()}-${_pad(_now.getUTCMonth()+1)}-${_pad(_now.getUTCDate())} `
+                 + `${_pad(_now.getUTCHours())}:${_pad(_now.getUTCMinutes())}:${_pad(_now.getUTCSeconds())}`;
+
+    const itemsJson     = JSON.stringify(Array.isArray(items) ? items : []);
+
+    const safeSubtotal = subtotal       != null ? Number(subtotal)      : 0;
+    const safeTax      = tax            != null ? Number(tax)           : 0;
+    const safeDiscount = discount       != null ? Number(discount)      : 0;
+    const safeTotal    = Number(total);
+    const safeChange   = changeAmount   != null ? Number(changeAmount)  : 0;
+    const safeNotes    = notes          !== undefined ? notes : null;
+    const safeStatus   = payment_status || 'completed';
+
+    // ── Chaînage fiscal NF525 (optionnel selon paramètre) ────────────────────
+    let txHash = null;
+    try {
+      const settings = await db.get(
+        'SELECT fiscal_chain_enabled FROM `settings` LIMIT 1'
+      );
+      if (settings?.fiscal_chain_enabled === 1) {
+        if (!process.env.FISCAL_HMAC_KEY) {
+          console.warn('[fiscal] fiscal_chain_enabled=1 mais FISCAL_HMAC_KEY manquante dans .env !');
+        } else {
+          const tail = await getChainTail(db);
+          const txForHash = {
+            id:               txId,
+            user_id:          req.userId,
+            transaction_date: txDate,
+            items:            itemsJson,
+            subtotal:         safeSubtotal,
+            tax:              safeTax,
+            discount:         safeDiscount,
+            total:            safeTotal,
+            payment_method,
+            receipt_number:   receiptNumber,
+          };
+          txHash = computeTransactionHash(txForHash, tail.last_hash);
+        }
+      }
+    } catch (hashErr) {
+      // Ne pas bloquer l'encaissement en cas d'erreur sur le hash
+      console.error('[fiscal] Erreur calcul hash :', hashErr.message);
+    }
 
     // Vérification défensive : aucun undefined ne doit passer
+    const params = [
+      txId, req.userId, itemsJson,
+      safeSubtotal, safeTax, safeDiscount, safeTotal,
+      payment_method, safeStatus, safeChange, safeNotes,
+      receiptNumber, txHash,
+    ];
+
     const undefinedIdx = params.findIndex(p => p === undefined);
     if (undefinedIdx !== -1) {
       console.error('[transactions POST] param undefined à index', undefinedIdx, params);
@@ -56,13 +105,23 @@ router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
     await db.run(
       `INSERT INTO \`transactions\`
          (id, user_id, items, subtotal, tax, discount, total,
-          payment_method, payment_status, \`change\`, notes, receipt_number)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          payment_method, payment_status, \`change\`, notes,
+          receipt_number, transaction_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params
     );
 
+    // ── Mise à jour du singleton fiscal_chain (si hash calculé) ─────────────
+    if (txHash) {
+      try {
+        await updateChainTail(db, txHash, txId);
+      } catch (chainErr) {
+        console.error('[fiscal] Erreur mise à jour fiscal_chain :', chainErr.message);
+      }
+    }
+
     const transaction = await db.get(
-      'SELECT * FROM `transactions` WHERE id = ?', [params[0]]
+      'SELECT * FROM `transactions` WHERE id = ?', [txId]
     );
     res.status(201).json(transaction);
   } catch (error) {

@@ -700,6 +700,67 @@
                         </div>
                     </div>
 
+                    <!-- NF525 — Conformité fiscale France -->
+                    <div class="bg-white rounded-xl shadow-sm p-4" id="fiscalChainBlock">
+                        <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2">
+                            <span>🔐</span> Conformité fiscale NF525
+                        </h3>
+                        <p class="text-xs text-gray-500 mb-4">
+                            Chaînage cryptographique des transactions (loi anti-fraude TVA France). Chaque encaissement est signé par un HMAC-SHA256 lié au précédent. <strong>Requiert la variable <code>FISCAL_HMAC_KEY</code> dans le fichier .env du serveur.</strong>
+                        </p>
+
+                        <!-- Toggle activation -->
+                        <div class="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg mb-3">
+                            <div>
+                                <p class="font-medium text-amber-800 text-sm">Activer le chaînage NF525</p>
+                                <p class="text-xs text-amber-600">Les nouvelles transactions seront signées cryptographiquement</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="fiscalChainEnabled" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                            </label>
+                        </div>
+
+                        <!-- Statut de la chaîne -->
+                        <div id="fiscalChainStatus" class="hidden p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 mb-3 space-y-1">
+                            <div class="flex items-center gap-2">
+                                <span id="fiscalChainStatusDot" class="w-2 h-2 rounded-full bg-gray-400 inline-block"></span>
+                                <span id="fiscalChainStatusText">Chargement…</span>
+                            </div>
+                            <div id="fiscalChainDetails" class="text-gray-400 pl-4"></div>
+                        </div>
+
+                        <!-- Bouton vérification chaîne -->
+                        <div class="flex gap-2">
+                            <button onclick="app.verifyFiscalChain()"
+                                id="btnVerifyChain"
+                                class="flex-1 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition flex items-center justify-center gap-2">
+                                🔍 Vérifier l'intégrité de la chaîne
+                            </button>
+                            <button onclick="app.loadFiscalStatus()"
+                                class="py-2 px-3 text-sm bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-lg transition"
+                                title="Rafraîchir le statut">
+                                🔄
+                            </button>
+                        </div>
+
+                        <!-- Résultat de la vérification -->
+                        <div id="fiscalVerifyResult" class="hidden mt-3 p-3 rounded-lg border text-xs"></div>
+
+                        <!-- Bouton recalcul — visible uniquement si anomalies (changement de clé HMAC) -->
+                        <div id="fiscalResetBlock" class="hidden mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                            <p class="text-xs text-orange-800 mb-2">
+                                <strong>⚠️ Changement de clé HMAC détecté ?</strong><br>
+                                Si vous avez modifié <code>FISCAL_HMAC_KEY</code> dans le .env après avoir créé des transactions, recalculez la chaîne avec la nouvelle clé.
+                            </p>
+                            <button onclick="app.resetFiscalChain()"
+                                id="btnResetChain"
+                                class="w-full py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2">
+                                🔄 Recalculer toute la chaîne avec la clé actuelle
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Save Button -->
                     <button onclick="app.saveSettings()" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl transition shadow-lg">
                         💾 Enregistrer les paramètres

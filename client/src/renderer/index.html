@@ -115,9 +115,11 @@
                     <span class="text-lg">📦</span>
                     <span class="hidden xl:inline">Produits</span>
                 </button>
-                <button onclick="app.showSection('history')" class="nav-tab" data-section="history" data-role="admin,manager" data-module="historique">
+                <button onclick="app.showSection('history')" class="nav-tab relative" data-section="history" data-role="admin,manager" data-module="historique">
                     <span class="text-lg">📜</span>
                     <span class="hidden xl:inline">Historique</span>
+                    <!-- Badge avertissement clôture journalière -->
+                    <span id="closureBadge" class="hidden absolute -top-1 -right-1 bg-amber-500 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center" title="Clôture journalière non effectuée">!</span>
                 </button>
                 <button onclick="app.showSection('settings')" class="nav-tab" data-section="settings" data-role="admin">
                     <span class="text-lg">⚙️</span>
@@ -261,11 +263,13 @@
                         <!-- Totals -->
                         <div class="space-y-1 mb-3 text-sm">
                             <div class="flex justify-between text-gray-500">
-                                <span>Sous-total</span>
+                                <span>Sous-total HT</span>
                                 <span id="subtotal">0,00 €</span>
                             </div>
+                            <!-- Ventilation TVA multi-taux — injectée dynamiquement -->
+                            <div id="vatBreakdownDisplay" class="space-y-0.5"></div>
                             <div class="flex justify-between text-gray-500">
-                                <span>TVA (20%)</span>
+                                <span>Total TVA</span>
                                 <span id="taxAmount">0,00 €</span>
                             </div>
                             <div class="flex justify-between items-center text-gray-500" id="discountRow" style="display:none;">
@@ -497,6 +501,16 @@
 
             <!-- ============ HISTORY SECTION ============ -->
             <section id="history-section" class="hidden h-full flex flex-col overflow-hidden bg-gray-50">
+
+                <!-- Bandeau avertissement clôture journalière (admin only) -->
+                <div id="closureWarningBanner" class="hidden bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-3 flex-shrink-0">
+                    <span class="text-amber-500 text-lg">⚠️</span>
+                    <p id="closureWarningText" class="text-sm text-amber-800 font-medium flex-1">La clôture journalière n'a pas été effectuée depuis plus de 26h.</p>
+                    <button onclick="app.openClosureModal()" class="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg font-semibold transition">
+                        Clôturer maintenant
+                    </button>
+                </div>
+
                 <!-- Stats rapides -->
                 <div class="p-3 bg-white border-b border-gray-200 flex-shrink-0">
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
@@ -528,6 +542,17 @@
                             🔍 Filtrer
                         </button>
                         <div class="ml-auto flex gap-2">
+                            <!-- Bouton clôture journalière — admin uniquement -->
+                            <button onclick="app.openClosureModal()" id="btnClosureDay"
+                                class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-1.5 export-btn"
+                                data-role="admin" title="Effectuer la clôture journalière (Z-ticket)">
+                                📋 Z-Ticket
+                            </button>
+                            <button onclick="app.openClosuresHistory()" id="btnClosuresHistory"
+                                class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn"
+                                data-role="admin" title="Historique des clôtures">
+                                🗂️ Clôtures
+                            </button>
                             <button onclick="app.exportReport('week')" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">
                                 📊 Semaine
                             </button>
@@ -721,6 +746,26 @@
                             </label>
                         </div>
 
+                        <!-- Heure de début journée fiscale -->
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3">
+                            <div>
+                                <p class="font-medium text-gray-700 text-sm">🕕 Début journée fiscale</p>
+                                <p class="text-xs text-gray-500">Heure de début (la journée se termine 24h après)</p>
+                            </div>
+                            <select id="fiscalDayStartHour" class="border border-gray-200 rounded-lg px-2 py-1 text-sm">
+                                <option value="0">00:00</option>
+                                <option value="1">01:00</option>
+                                <option value="2">02:00</option>
+                                <option value="3">03:00</option>
+                                <option value="4">04:00</option>
+                                <option value="5">05:00</option>
+                                <option value="6" selected>06:00 (défaut)</option>
+                                <option value="7">07:00</option>
+                                <option value="8">08:00</option>
+                                <option value="9">09:00</option>
+                            </select>
+                        </div>
+
                         <!-- Statut de la chaîne -->
                         <div id="fiscalChainStatus" class="hidden p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 mb-3 space-y-1">
                             <div class="flex items-center gap-2">
@@ -759,6 +804,135 @@
                                 🔄 Recalculer toute la chaîne avec la clé actuelle
                             </button>
                         </div>
+                    </div>
+
+                    <!-- AGEC — Ticket dématérialisé -->
+                    <div class="bg-white rounded-xl shadow-sm p-4">
+                        <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2">
+                            <span>📧</span> Ticket dématérialisé — Loi AGEC
+                        </h3>
+                        <p class="text-xs text-gray-500 mb-4">
+                            Depuis août 2023, le ticket de caisse n'est plus imprimé automatiquement en France.
+                            Lorsque cette option est activée, un modal propose au client de recevoir son ticket par email ou de l'imprimer à la demande.
+                        </p>
+
+                        <!-- Toggle activation AGEC -->
+                        <div class="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg mb-3">
+                            <div>
+                                <p class="font-medium text-blue-800 text-sm">Activer la proposition de ticket dématérialisé</p>
+                                <p class="text-xs text-blue-600">Modal de choix après chaque encaissement (email / imprimer / aucun)</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="agecEnabled" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+
+                        <!-- Bloc info SMTP -->
+                        <div id="agecSmtpInfo" class="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 space-y-1">
+                            <p class="font-semibold text-gray-700">📬 Configuration email requise</p>
+                            <p>Pour envoyer les tickets par email, renseignez les variables SMTP dans <code class="bg-gray-200 px-1 rounded">server/.env</code> :</p>
+                            <pre class="bg-gray-800 text-green-400 rounded-lg p-2 mt-1 text-xs overflow-x-auto leading-relaxed">SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=votre@email.com
+SMTP_PASS=votre_mot_de_passe
+SMTP_FROM="Co-Caisse" &lt;noreply@exemple.fr&gt;</pre>
+                            <p class="text-gray-400 mt-1">Sans SMTP configuré, le bouton "Email" sera désactivé — les options Imprimer et Aucun ticket restent disponibles.</p>
+                        </div>
+                    </div>
+
+                    <!-- RGPD — Conservation des données -->
+                    <div class="bg-white rounded-xl shadow-sm p-4">
+                        <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2">
+                            <span>🛡️</span> RGPD — Conservation des données
+                        </h3>
+                        <p class="text-xs text-gray-500 mb-4">
+                            Un job automatique s'exécute chaque nuit à 03h00 et anonymise les données personnelles
+                            des clients au-delà de la durée configurée.
+                            <strong>Les transactions fiscales ne sont jamais supprimées</strong> (obligation légale).
+                        </p>
+
+                        <!-- Rétention transactions -->
+                        <div class="p-3 bg-indigo-50 border border-indigo-200 rounded-lg mb-3">
+                            <div class="flex items-center justify-between mb-1">
+                                <div>
+                                    <p class="font-medium text-indigo-800 text-sm">🧾 Données clients (transactions)</p>
+                                    <p class="text-xs text-indigo-600">customer_name, email, téléphone → anonymisés après X mois</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="rgpdRetentionMonths"
+                                        value="120" min="1" max="360" step="1"
+                                        class="w-20 border border-indigo-300 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-indigo-400">
+                                    <span class="text-xs text-indigo-700 font-medium">mois</span>
+                                </div>
+                            </div>
+                            <p id="rgpdRetentionWarning" class="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1 hidden">
+                                ⚠️ Valeur inférieure au minimum légal de <strong>120 mois (10 ans)</strong> — à utiliser uniquement en test
+                            </p>
+                            <p class="text-xs text-gray-400 mt-1">
+                                Minimum légal France : <strong>120 mois (10 ans)</strong> — obligation fiscale (LPF art. L102 B)
+                            </p>
+                        </div>
+
+                        <!-- Rétention logs -->
+                        <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg mb-3">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="font-medium text-gray-700 text-sm">📋 Logs applicatifs</p>
+                                    <p class="text-xs text-gray-500">Supprimés après X mois (table app_logs)</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="rgpdLogsRetentionMonths"
+                                        value="12" min="1" max="120" step="1"
+                                        class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-gray-400">
+                                    <span class="text-xs text-gray-600 font-medium">mois</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mode test : date pivot personnalisée -->
+                        <div class="p-3 bg-yellow-50 border border-yellow-300 rounded-lg mb-3">
+                            <p class="font-semibold text-yellow-800 text-sm mb-1">🧪 Mode test — Date pivot personnalisée</p>
+                            <p class="text-xs text-yellow-700 mb-2">
+                                Pour tester sans attendre 10 ans, forcez une date pivot future.
+                                Toutes les transactions <strong>antérieures</strong> à cette date seront anonymisées.
+                            </p>
+                            <div class="flex items-center gap-2">
+                                <input type="date" id="rgpdTestCutoff"
+                                    class="flex-1 border border-yellow-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-yellow-400">
+                                <button onclick="app.previewRgpdPurge()"
+                                    class="px-3 py-1.5 text-xs bg-yellow-200 hover:bg-yellow-300 text-yellow-800 font-semibold rounded-lg transition">
+                                    🔍 Aperçu
+                                </button>
+                            </div>
+                            <p class="text-xs text-yellow-600 mt-1">Laisser vide = utiliser la date pivot calculée automatiquement (120 mois en arrière)</p>
+                        </div>
+
+                        <!-- Statut dernière purge + aperçu -->
+                        <div id="rgpdStatusBlock" class="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 mb-3">
+                            <p class="font-semibold text-gray-700 mb-1">📊 Dernière purge automatique</p>
+                            <div id="rgpdLastPurge" class="text-gray-400">Chargement…</div>
+                        </div>
+
+                        <!-- Boutons purge manuelle + aperçu -->
+                        <div class="flex gap-2">
+                            <button onclick="app.loadRgpdStatus()"
+                                class="flex-1 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">
+                                🔄 Rafraîchir
+                            </button>
+                            <button onclick="app.previewRgpdPurge()"
+                                class="flex-1 py-2 text-sm bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">
+                                🔍 Aperçu
+                            </button>
+                            <button onclick="app.triggerRgpdPurge()"
+                                id="btnRgpdPurge"
+                                class="flex-1 py-2 text-sm bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">
+                                🗑️ Purger maintenant
+                            </button>
+                        </div>
+
+                        <!-- Résultat purge manuelle -->
+                        <div id="rgpdPurgeResult" class="hidden mt-3 p-3 rounded-lg border text-xs"></div>
                     </div>
 
                     <!-- Save Button -->
@@ -868,7 +1042,13 @@
                     <input type="number" id="productCost" placeholder="Coût" step="0.01" class="modal-input">
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                    <input type="number" id="productTax" placeholder="TVA %" step="0.01" value="20" class="modal-input">
+                    <div>
+                        <label class="text-xs font-semibold text-gray-600 mb-1 block">Taux TVA</label>
+                        <select id="productTax" class="modal-input">
+                            <!-- Options injectées dynamiquement par app.buildVatOptions() -->
+                            <option value="20">20 %</option>
+                        </select>
+                    </div>
                     <input type="number" id="productStock" placeholder="Stock" class="modal-input">
                 </div>
                 <input type="text" id="productBarcode" placeholder="Code-barres" class="modal-input">
@@ -978,6 +1158,67 @@
                 <button onclick="app.closeModal('discountModal')" class="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition">Annuler</button>
                 <button onclick="app.applyDiscount()" class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition">Appliquer</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL AGEC — CHOIX DU TICKET (loi août 2023) ============ -->
+    <div id="ticketChoiceModal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content max-w-sm">
+            <div class="text-center mb-5">
+                <div class="w-16 h-16 mx-auto mb-3 rounded-full bg-indigo-50 flex items-center justify-center text-3xl">🧾</div>
+                <h2 class="text-xl font-bold text-gray-800">Votre ticket</h2>
+                <p class="text-sm text-gray-500 mt-1" id="ticketChoiceSubtitle">Comment souhaitez-vous recevoir votre ticket ?</p>
+            </div>
+
+            <!-- Option Email -->
+            <div class="mb-3">
+                <button onclick="app.showEmailInput()" id="btnSendEmail"
+                    class="w-full flex items-center gap-3 p-3.5 border-2 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-xl transition text-left group">
+                    <span class="text-2xl">📧</span>
+                    <div>
+                        <p class="font-semibold text-gray-800 text-sm">Recevoir par email</p>
+                        <p class="text-xs text-gray-500">Un ticket HTML vous sera envoyé</p>
+                    </div>
+                    <span class="ml-auto text-indigo-400 group-hover:text-indigo-600">→</span>
+                </button>
+
+                <!-- Formulaire email — caché par défaut -->
+                <div id="emailInputForm" class="hidden mt-2 space-y-2">
+                    <input type="email" id="clientEmailInput"
+                        placeholder="email@client.fr"
+                        class="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" id="storeEmailConsent" class="mt-0.5 accent-indigo-500">
+                        <span class="text-xs text-gray-500 leading-relaxed">
+                            Conserver mon email pour les prochains tickets
+                            <span class="block text-gray-400 italic">(Email conservé pour l'envoi du ticket uniquement — RGPD)</span>
+                        </span>
+                    </label>
+                    <div id="emailSendError" class="hidden text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2"></div>
+                    <button onclick="app.sendReceiptByEmail()" id="btnConfirmEmail"
+                        class="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-semibold text-sm transition flex items-center justify-center gap-2">
+                        <span>📤</span> Envoyer le ticket
+                    </button>
+                </div>
+            </div>
+
+            <!-- Option Imprimer -->
+            <button onclick="app.printAndCloseTicketModal()"
+                class="w-full flex items-center gap-3 p-3.5 border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 rounded-xl transition text-left group mb-3">
+                <span class="text-2xl">🖨️</span>
+                <div>
+                    <p class="font-semibold text-gray-800 text-sm">Imprimer le ticket</p>
+                    <p class="text-xs text-gray-500" id="printerStatusHint">Impression thermique</p>
+                </div>
+                <span class="ml-auto text-gray-400 group-hover:text-gray-600">→</span>
+            </button>
+
+            <!-- Option Aucun ticket -->
+            <button onclick="app.closeTicketModal()"
+                class="w-full py-2.5 text-gray-400 hover:text-gray-600 text-sm transition rounded-xl hover:bg-gray-50">
+                Aucun ticket — Fermer
+            </button>
         </div>
     </div>
 
@@ -1103,18 +1344,90 @@
     <div id="confirmDialog" class="modal hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-content max-w-sm text-center">
-            <div id="confirmIcon" class="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center text-3xl bg-yellow-100">
-                ⚠️
-            </div>
+            <div id="confirmIcon" class="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center text-3xl bg-yellow-100">⚠️</div>
             <h3 id="confirmTitle" class="text-xl font-bold text-gray-800 mb-2">Confirmation</h3>
             <p id="confirmMessage" class="text-gray-600 mb-6">Êtes-vous sûr de vouloir continuer ?</p>
             <div class="flex gap-3">
-                <button id="confirmCancel" class="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-xl font-medium transition">
-                    Annuler
+                <button id="confirmCancel" class="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-xl font-medium transition">Annuler</button>
+                <button id="confirmOk" class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-medium transition">Confirmer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL CONFIRMATION CLÔTURE JOURNALIÈRE ============ -->
+    <div id="closureConfirmModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('closureConfirmModal')"></div>
+        <div class="modal-content max-w-md">
+            <div class="text-center mb-4">
+                <div class="w-16 h-16 mx-auto mb-3 rounded-full bg-amber-100 flex items-center justify-center text-3xl">📋</div>
+                <h2 class="text-xl font-bold text-gray-800">Clôture journalière</h2>
+                <p class="text-sm text-gray-500 mt-1">Z-Ticket fiscal — NF525</p>
+            </div>
+
+            <!-- Résumé journée avant clôture -->
+            <div id="closurePreview" class="bg-gray-50 rounded-xl p-4 mb-4 space-y-2 text-sm">
+                <p class="text-center text-gray-400">Chargement des données du jour…</p>
+            </div>
+
+            <!-- Avertissement si déjà clôturé -->
+            <div id="closureAlreadyDone" class="hidden bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-sm text-green-800 text-center">
+                ✅ La journée a déjà été clôturée.
+            </div>
+
+            <div id="closureActions" class="flex gap-3">
+                <button onclick="app.closeModal('closureConfirmModal')" class="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-xl font-medium transition">Annuler</button>
+                <button id="btnConfirmClosure" onclick="app.executeCloseDay()"
+                    class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition flex items-center justify-center gap-2">
+                    📋 Clôturer et générer le Z-Ticket
                 </button>
-                <button id="confirmOk" class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-medium transition">
-                    Confirmer
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL Z-TICKET RÉSULTAT ============ -->
+    <div id="zticketModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('zticketModal')"></div>
+        <div class="modal-content max-w-lg">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">📋 Z-Ticket de clôture</h2>
+                    <p id="zticketSubtitle" class="text-sm text-gray-500"></p>
+                </div>
+                <span id="zticketNumber" class="text-lg font-bold text-amber-600 bg-amber-50 px-3 py-1 rounded-lg"></span>
+            </div>
+
+            <!-- Contenu Z-ticket (monospace) -->
+            <div class="bg-gray-900 rounded-xl p-4 mb-4 max-h-[55vh] overflow-y-auto">
+                <pre id="zticketContent" class="text-green-400 font-mono text-xs whitespace-pre leading-relaxed"></pre>
+            </div>
+
+            <!-- Résumé visuel -->
+            <div id="zticketSummary" class="grid grid-cols-3 gap-2 mb-4 text-center text-xs"></div>
+
+            <div class="flex gap-2">
+                <button onclick="app.printZticket()" class="flex-1 py-2.5 bg-gray-700 hover:bg-gray-800 text-white rounded-xl font-medium transition flex items-center justify-center gap-2">
+                    🖨️ Imprimer
                 </button>
+                <button onclick="app.exportZticketPDF()" class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-medium transition flex items-center justify-center gap-2">
+                    📄 Export PDF
+                </button>
+                <button onclick="app.closeModal('zticketModal')" class="py-2.5 px-4 bg-gray-200 hover:bg-gray-300 rounded-xl font-medium transition">
+                    Fermer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL HISTORIQUE DES CLÔTURES ============ -->
+    <div id="closuresHistoryModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('closuresHistoryModal')"></div>
+        <div class="modal-content max-w-2xl">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800">🗂️ Historique des clôtures</h2>
+                <button onclick="app.closeModal('closuresHistoryModal')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            <div id="closuresHistoryList" class="space-y-2 max-h-[65vh] overflow-y-auto">
+                <p class="text-center text-gray-400 py-8">Chargement…</p>
             </div>
         </div>
     </div>

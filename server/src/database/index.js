@@ -149,6 +149,10 @@ class Database {
           notes            TEXT,
           receipt_number   VARCHAR(100),
           order_id         VARCHAR(36),
+          customer_email       VARCHAR(255) DEFAULT NULL
+                               COMMENT 'Email client (RGPD — consentement explicite)',
+          receipt_email_sent_at DATETIME    DEFAULT NULL
+                               COMMENT 'Horodatage envoi ticket par email',
           transaction_hash VARCHAR(64)  DEFAULT NULL
                                         COMMENT 'HMAC-SHA256 NF525 (null si chaînage non activé)',
           created_at       DATETIME     DEFAULT CURRENT_TIMESTAMP,
@@ -193,6 +197,16 @@ class Database {
           alert_enabled            TINYINT(1)   DEFAULT 1,
           alert_sound_enabled      TINYINT(1)   DEFAULT 1,
           alert_remind_after_dismiss INT        DEFAULT 10,
+          fiscal_chain_enabled     TINYINT(1)   DEFAULT 0,
+          fiscal_day_start_hour    TINYINT      DEFAULT 6,
+          agec_enabled             TINYINT(1)   DEFAULT 1
+                                               COMMENT 'Proposition ticket dématérialisé AGEC (1=actif)',
+          rgpd_retention_months    SMALLINT     DEFAULT 120
+                                               COMMENT 'Conservation données clients (mois, min légal 120)',
+          rgpd_logs_retention_months SMALLINT   DEFAULT 12
+                                               COMMENT 'Conservation des logs applicatifs (mois)',
+          country                  VARCHAR(5)   DEFAULT 'FR'
+                                               COMMENT 'Code pays ISO (FR, MA, BE, CH)',
           created_at               DATETIME     DEFAULT CURRENT_TIMESTAMP,
           updated_at               DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -247,6 +261,49 @@ class Database {
           resolved_at   DATETIME,
           resolved_by   VARCHAR(36)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+
+      // ── daily_closures ────────────────────────────
+      // Clôtures journalières immuables — Z-tickets NF525
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS daily_closures (
+          id                    VARCHAR(36)  PRIMARY KEY,
+          closure_number        VARCHAR(10)  NOT NULL UNIQUE,
+          fiscal_day_start      DATETIME     NOT NULL,
+          fiscal_day_end        DATETIME     NOT NULL,
+          closed_at             DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          closed_by             VARCHAR(36)  NOT NULL,
+          transaction_count     INT          NOT NULL DEFAULT 0,
+          total_ttc             DOUBLE       NOT NULL DEFAULT 0,
+          total_ht              DOUBLE       NOT NULL DEFAULT 0,
+          total_tax             DOUBLE       NOT NULL DEFAULT 0,
+          total_discount        DOUBLE       NOT NULL DEFAULT 0,
+          vat_breakdown         JSON         DEFAULT NULL,
+          payment_breakdown     JSON         DEFAULT NULL,
+          last_transaction_id   VARCHAR(36)  DEFAULT NULL,
+          last_transaction_hash VARCHAR(64)  DEFAULT NULL,
+          closure_hash          VARCHAR(64)  NOT NULL,
+          zticket_content       TEXT         DEFAULT NULL,
+          created_at            DATETIME     DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+
+      // ── rgpd_purge_logs ───────────────────────────
+      // Journal des purges RGPD — ne jamais supprimer
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS \`rgpd_purge_logs\` (
+          id                       VARCHAR(36)  NOT NULL PRIMARY KEY,
+          run_at                   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          triggered_by             VARCHAR(20)  NOT NULL DEFAULT 'cron',
+          triggered_by_user        VARCHAR(36)  DEFAULT NULL,
+          retention_months         SMALLINT     NOT NULL,
+          cutoff_date              DATETIME     NOT NULL,
+          transactions_anonymized  INT          NOT NULL DEFAULT 0,
+          logs_deleted             INT          NOT NULL DEFAULT 0,
+          status                   VARCHAR(20)  NOT NULL DEFAULT 'success',
+          error_message            TEXT         DEFAULT NULL,
+          created_at               DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
       await conn.query('SET FOREIGN_KEY_CHECKS = 1');

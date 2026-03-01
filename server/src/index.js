@@ -24,6 +24,10 @@ import settingsRoutes    from './routes/settings.js';
 import licenceRoutes     from './routes/licences.js';
 import adminRoutes       from './routes/admin.js';
 import fiscalRoutes      from './routes/fiscal.js'; // NF525 anti-fraude TVA
+import configRoutes      from './routes/config.js'; // Configuration établissement
+import receiptRoutes     from './routes/receipts.js'; // Tickets dématérialisés AGEC
+import rgpdRoutes        from './routes/rgpd.js'; // RGPD purge & conservation
+import { startPurgeJob } from './jobs/purgeJob.js'; // Cron RGPD 03h00
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
@@ -67,8 +71,9 @@ await db.initialize();
 app.locals.db = db;
 
 // ── Routes PUBLIQUES (sans JWT, sans contrôle licence) ───────────────────────
-app.use('/api/licences', licenceRoutes);   // status, trial, activate, validate
-app.use('/api/users',    userRoutes);      // login public + routes protégées internes
+app.use('/api/licences', licenceRoutes);
+app.use('/api/users',    userRoutes);
+app.use('/api/config',   configRoutes);    // Config établissement (vatRates, pays…)
 
 // ── Middleware de licence ─────────────────────────────────────────────────────
 // Appliqué APRÈS les routes publiques — bloque si licence absente/expirée
@@ -84,6 +89,8 @@ app.use('/api/reports',      authMiddleware, reportRoutes);
 app.use('/api/settings',     authMiddleware, settingsRoutes);
 app.use('/api/admin',        adminRoutes);   // auth + roleCheck admin dans le router
 app.use('/api/fiscal',       authMiddleware, fiscalRoutes); // NF525 anti-fraude TVA
+app.use('/api/receipts',     authMiddleware, receiptRoutes); // Tickets AGEC
+app.use('/api/rgpd',         authMiddleware, rgpdRoutes);   // RGPD purge & conservation
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -103,6 +110,9 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`✅ Serveur Co-Caisse démarré sur le port ${PORT}`);
   console.log(`   CORS autorisé pour : ${allowedOrigins.join(', ')}`);
+
+  // Démarrer le job RGPD de purge automatique (03h00 chaque jour)
+  startPurgeJob(db);
 });
 
 export default app;

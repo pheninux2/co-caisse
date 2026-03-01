@@ -21,6 +21,7 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.17.4",
+    "node-cron": "^4.2.1",
     "nodemailer": "^8.0.1",
     "uuid": "^9.0.0"
   },
@@ -32,7 +33,9 @@
   },
   "vitest": {
     "environment": "node",
-    "include": ["src/tests/**/*.test.js"],
+    "include": [
+      "src/tests/**/*.test.js"
+    ],
     "globals": false,
     "clearMocks": true,
     "restoreMocks": true,
@@ -43,7 +46,11 @@
         "src/routes/fiscal.js",
         "src/routes/transactions.js"
       ],
-      "reporter": ["text", "html", "lcov"]
+      "reporter": [
+        "text",
+        "html",
+        "lcov"
+      ]
     }
   }
 }

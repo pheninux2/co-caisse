@@ -489,6 +489,7 @@ class CocaisseApp {
 
     // Initialiser l'app principal
     this.setupEventListeners();
+    this.businessConfig = null; // sera chargé par loadData → loadBusinessConfig
     this.loadData();
     this.updateClock();
     setInterval(() => this.updateClock(), 1000);
@@ -504,6 +505,11 @@ class CocaisseApp {
 
     // Démarrer le polling des alertes (toutes les 30 secondes)
     this.startAlertPolling();
+
+    // Vérifier le statut de la clôture journalière (admin only)
+    this.checkClosureStatus();
+    // Recheck toutes les 30 minutes
+    setInterval(() => this.checkClosureStatus(), 30 * 60 * 1000);
   }
 
   filterMenuByRole() {
@@ -998,16 +1004,34 @@ class CocaisseApp {
   }
 
   updateTotals() {
-    const subtotal = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const tax = subtotal * 0.20;
+    const { totalHt, totalTax, totalTtc, byRate } = this.computeCartTax();
     const discount = this.currentDiscount;
-    const total = subtotal + tax - discount;
+    const total    = totalTtc - discount;
 
-    document.getElementById('subtotal').textContent = subtotal.toFixed(2).replace('.', ',') + ' €';
-    document.getElementById('taxAmount').textContent = tax.toFixed(2).replace('.', ',') + ' €';
-    document.getElementById('totalAmount').textContent = total.toFixed(2).replace('.', ',') + ' €';
+    // Sous-total HT
+    document.getElementById('subtotal').textContent =
+      totalHt.toFixed(2).replace('.', ',') + ' €';
 
-    const discountRow = document.getElementById('discountRow');
+    // Ventilation TVA par taux
+    const vatEl = document.getElementById('vatBreakdownDisplay');
+    if (vatEl) {
+      vatEl.innerHTML = byRate.map(v =>
+        `<div class="flex justify-between text-gray-400 text-xs">
+           <span>TVA ${v.rate}% sur ${v.baseHt.toFixed(2).replace('.', ',')} €</span>
+           <span>${v.taxAmount.toFixed(2).replace('.', ',')} €</span>
+         </div>`
+      ).join('');
+    }
+
+    // Total TVA
+    document.getElementById('taxAmount').textContent =
+      totalTax.toFixed(2).replace('.', ',') + ' €';
+
+    // Total TTC
+    document.getElementById('totalAmount').textContent =
+      total.toFixed(2).replace('.', ',') + ' €';
+
+    const discountRow     = document.getElementById('discountRow');
     const discountDisplay = document.getElementById('discountDisplay');
     if (discountRow && discountDisplay) {
       if (discount > 0) {
@@ -1022,31 +1046,25 @@ class CocaisseApp {
   }
 
   updateChangeSection() {
-    const selected = document.querySelector('.payment-method.active');
+    const selected    = document.querySelector('.payment-method.active');
     const changeSection = document.getElementById('changeSection');
-
     if (changeSection) {
-      if (selected?.dataset.method === 'cash') {
-        changeSection.style.display = '';
-      } else {
-        changeSection.style.display = 'none';
-      }
+      changeSection.style.display = selected?.dataset.method === 'cash' ? '' : 'none';
     }
   }
 
   calculateChange() {
-    const amountInput = document.getElementById('amountReceived');
+    const amountInput  = document.getElementById('amountReceived');
     const changeAmount = document.getElementById('changeAmount');
-
     if (!amountInput || !changeAmount) return;
 
     const amountReceived = parseFloat(amountInput.value || 0);
-    const subtotal = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const total = subtotal * 1.20 - this.currentDiscount;
-    const change = amountReceived - total;
+    const { totalTtc }   = this.computeCartTax();
+    const total          = totalTtc - this.currentDiscount;
+    const change         = amountReceived - total;
 
     changeAmount.textContent = change.toFixed(2).replace('.', ',') + ' €';
-    changeAmount.className = change >= 0
+    changeAmount.className   = change >= 0
       ? 'font-bold text-green-600'
       : 'font-bold text-red-600';
   }
@@ -1055,6 +1073,7 @@ class CocaisseApp {
   async loadData() {
     try {
       await Promise.all([
+        this.loadBusinessConfig(),
         this.loadCategories(),
         this.loadProducts(),
         this.loadDashboard(),
@@ -1062,6 +1081,68 @@ class CocaisseApp {
     } catch (error) {
       console.error('Error loading data:', error);
     }
+  }
+
+  // Charge la configuration établissement (vatRates, pays, devise…)
+  async loadBusinessConfig() {
+    try {
+      const res = await fetch(`${API_URL}/config/business`);
+      if (res.ok) {
+        this.businessConfig = await res.json();
+      }
+    } catch (_) { /* silencieux — fallback sur config par défaut */ }
+    // Valeurs par défaut France si serveur inaccessible
+    if (!this.businessConfig) {
+      this.businessConfig = {
+        country: 'FR',
+        fiscal: { vatRates: [5.5, 10, 20], defaultVatRate: 20, currency: 'EUR', currencySymbol: '€' },
+      };
+    }
+  }
+
+  // Retourne les taux TVA disponibles selon la config active
+  getVatRates() {
+    return this.businessConfig?.fiscal?.vatRates || [5.5, 10, 20];
+  }
+
+  // Retourne le taux TVA par défaut
+  getDefaultVatRate() {
+    return this.businessConfig?.fiscal?.defaultVatRate ?? 20;
+  }
+
+  // Construit les <option> du select TVA — appelé à l'ouverture du formulaire produit
+  buildVatOptions(currentRate = null) {
+    const rates    = this.getVatRates();
+    const selected = currentRate ?? this.getDefaultVatRate();
+    return rates.map(r =>
+      `<option value="${r}" ${Number(r) === Number(selected) ? 'selected' : ''}>${r} %</option>`
+    ).join('');
+  }
+
+  /**
+   * Calcule la ventilation TVA multi-taux du panier.
+   * Retourne { totalHt, totalTax, totalTtc, byRate: [{rate, baseHt, taxAmount, totalTtc}] }
+   * Prix TTC = item.price (stocké TTC en base)
+   * Prix HT  = TTC / (1 + rate/100)
+   */
+  computeCartTax() {
+    const vatMap = {};
+    for (const item of this.cart) {
+      const rate    = Number(item.tax_rate ?? this.getDefaultVatRate());
+      const ttc     = item.price * item.quantity;
+      const ht      = ttc / (1 + rate / 100);
+      const taxAmt  = ttc - ht;
+      const key     = String(rate);
+      if (!vatMap[key]) vatMap[key] = { rate, baseHt: 0, taxAmount: 0, totalTtc: 0 };
+      vatMap[key].baseHt    += ht;
+      vatMap[key].taxAmount += taxAmt;
+      vatMap[key].totalTtc  += ttc;
+    }
+    const byRate   = Object.values(vatMap).sort((a, b) => a.rate - b.rate);
+    const totalTtc = byRate.reduce((s, v) => s + v.totalTtc,  0);
+    const totalHt  = byRate.reduce((s, v) => s + v.baseHt,    0);
+    const totalTax = byRate.reduce((s, v) => s + v.taxAmount, 0);
+    return { totalHt, totalTax, totalTtc, byRate };
   }
 
   async loadCategories() {
@@ -1803,7 +1884,10 @@ class CocaisseApp {
     if (section === 'orders') this.loadOrders();
     if (section === 'kitchen') this.loadKitchenOrders();
     if (section === 'products') this.filterProducts('');
-    if (section === 'history') this.loadTransactions();
+    if (section === 'history') {
+      this.loadTransactions();
+      this.checkClosureStatus();
+    }
     if (section === 'settings') {
       this.loadUsers();
       this.loadSettingsData();
@@ -1819,32 +1903,40 @@ class CocaisseApp {
     if (preview) preview.innerHTML = '📦';
     document.getElementById('productImageData').value = '';
 
+    // Injecter les options TVA dynamiques selon la config pays
+    const taxSelect = document.getElementById('productTax');
+    if (taxSelect) {
+      taxSelect.innerHTML = this.buildVatOptions(
+        productId
+          ? this.products.find(p => p.id === productId)?.tax_rate
+          : this.getDefaultVatRate()
+      );
+    }
+
     if (productId) {
       const product = this.products.find(p => p.id === productId);
       if (product) {
-        document.getElementById('productName').value = product.name;
+        document.getElementById('productName').value        = product.name;
         document.getElementById('productDescription').value = product.description || '';
-        document.getElementById('productCategory').value = product.category_id;
-        document.getElementById('productPrice').value = product.price;
-        document.getElementById('productCost').value = product.cost || '';
-        document.getElementById('productTax').value = product.tax_rate || 20;
-        document.getElementById('productBarcode').value = product.barcode || '';
-        document.getElementById('productStock').value = product.stock || 0;
+        document.getElementById('productCategory').value    = product.category_id;
+        document.getElementById('productPrice').value       = product.price;
+        document.getElementById('productCost').value        = product.cost || '';
+        if (taxSelect) taxSelect.value = product.tax_rate ?? this.getDefaultVatRate();
+        document.getElementById('productBarcode').value     = product.barcode || '';
+        document.getElementById('productStock').value       = product.stock || 0;
 
-        // Show existing image
         if (product.image_url) {
           preview.innerHTML = `<img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover rounded-xl">`;
           document.getElementById('productImageData').value = product.image_url;
         }
       }
     } else {
-      document.getElementById('productName').value = '';
+      document.getElementById('productName').value        = '';
       document.getElementById('productDescription').value = '';
-      document.getElementById('productPrice').value = '';
-      document.getElementById('productCost').value = '';
-      document.getElementById('productTax').value = '20';
-      document.getElementById('productBarcode').value = '';
-      document.getElementById('productStock').value = '';
+      document.getElementById('productPrice').value       = '';
+      document.getElementById('productCost').value        = '';
+      document.getElementById('productBarcode').value     = '';
+      document.getElementById('productStock').value       = '';
     }
 
     const select = document.getElementById('productCategory');
@@ -2161,12 +2253,11 @@ class CocaisseApp {
       return;
     }
 
-    const paymentMethod = selectedMethod.dataset.method;
-    const subtotal = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const tax = subtotal * 0.20;
-    const discount = this.currentDiscount;
-    const total = subtotal + tax - discount;
-    const change = paymentMethod === 'cash'
+    const paymentMethod              = selectedMethod.dataset.method;
+    const { totalHt, totalTax, totalTtc, byRate } = this.computeCartTax();
+    const discount                   = this.currentDiscount;
+    const total                      = totalTtc - discount;
+    const change                     = paymentMethod === 'cash'
       ? parseFloat(document.getElementById('amountReceived')?.value || 0) - total
       : 0;
 
@@ -2177,18 +2268,20 @@ class CocaisseApp {
 
     const transaction = {
       items: this.cart.map(item => ({
-        id: item.id,
-        name: item.name,
+        id:       item.id,
+        name:     item.name,
         quantity: item.quantity,
-        price: item.price,
-        total: item.price * item.quantity
+        price:    item.price,
+        tax_rate: item.tax_rate ?? this.getDefaultVatRate(),
+        total:    item.price * item.quantity,
       })),
-      subtotal: parseFloat(subtotal.toFixed(2)),
-      tax: parseFloat(tax.toFixed(2)),
-      discount: parseFloat(discount.toFixed(2)),
-      total: parseFloat(total.toFixed(2)),
-      payment_method: paymentMethod,
-      change: parseFloat(change.toFixed(2))
+      subtotal:        parseFloat(totalHt.toFixed(2)),      // HT
+      tax:             parseFloat(totalTax.toFixed(2)),
+      discount:        parseFloat(discount.toFixed(2)),
+      total:           parseFloat(total.toFixed(2)),        // TTC - remise
+      vat_breakdown:   byRate,
+      payment_method:  paymentMethod,
+      change:          parseFloat(change.toFixed(2)),
     };
 
     try {
@@ -2198,44 +2291,183 @@ class CocaisseApp {
       });
 
       const result = await response.json();
-      this.showReceipt(result);
+
+      // Réinitialiser le panier AVANT d'afficher le modal ticket
       this.cart = [];
       this.currentDiscount = 0;
       document.getElementById('amountReceived').value = '';
       this.updateCartDisplay();
       await this.loadDashboard();
       this.toastSuccess('Paiement effectué avec succès !');
+
+      // Loi AGEC (août 2023) : modal de choix du ticket
+      this._openTicketChoiceModal(result);
     } catch (error) {
       this.toastError('Erreur: ' + error.message);
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // TICKET DÉMATÉRIALISÉ — LOI AGEC (août 2023)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Ouvre le modal de choix du ticket selon la config printByDefault.
+   * - printByDefault = false (France) : modal obligatoire, pas d'impression auto
+   * - printByDefault = true           : impression auto + proposition email
+   */
+  _openTicketChoiceModal(transaction) {
+    this._pendingReceiptTransaction = transaction;
+
+    const printByDefault = this.businessConfig?.receipt?.printByDefault ?? false;
+    const agecEnabled    = this.settings?.agec_enabled !== 0; // true par défaut
+
+    // Si AGEC désactivé dans les paramètres → comportement classique (impression directe)
+    if (!agecEnabled) {
+      this.showReceipt(transaction);
+      return;
+    }
+
+    if (printByDefault) {
+      // Pays avec impression auto : imprimer + proposer l'email via le receipt modal
+      this.showReceipt(transaction);
+      return;
+    }
+
+    // Loi AGEC active : afficher le modal de choix
+    const subtitleEl = document.getElementById('ticketChoiceSubtitle');
+    if (subtitleEl) subtitleEl.textContent = 'Comment souhaitez-vous recevoir votre ticket ?';
+
+    // Réinitialiser le formulaire email
+    const emailForm = document.getElementById('emailInputForm');
+    if (emailForm) emailForm.classList.add('hidden');
+    const emailInput = document.getElementById('clientEmailInput');
+    if (emailInput) emailInput.value = '';
+    const consent = document.getElementById('storeEmailConsent');
+    if (consent) consent.checked = false;
+    const errEl = document.getElementById('emailSendError');
+    if (errEl) errEl.classList.add('hidden');
+    const btn = document.getElementById('btnConfirmEmail');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span>📤</span> Envoyer le ticket'; }
+
+    // Info imprimante
+    const printerHint = document.getElementById('printerStatusHint');
+    if (printerHint) {
+      printerHint.textContent = window.electron
+        ? 'Impression thermique directe'
+        : 'Impression via le navigateur';
+    }
+
+    this.openModal('ticketChoiceModal');
+  }
+
+  /** Affiche le formulaire de saisie email dans le modal AGEC. */
+  showEmailInput() {
+    const form = document.getElementById('emailInputForm');
+    if (form) {
+      form.classList.remove('hidden');
+      document.getElementById('clientEmailInput')?.focus();
+    }
+  }
+
+  /** Envoie le ticket par email via POST /api/receipts/email. */
+  async sendReceiptByEmail() {
+    const email     = document.getElementById('clientEmailInput')?.value?.trim();
+    const consent   = document.getElementById('storeEmailConsent')?.checked ?? false;
+    const btn       = document.getElementById('btnConfirmEmail');
+    const errEl     = document.getElementById('emailSendError');
+
+    if (errEl) errEl.classList.add('hidden');
+
+    // Validation email
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (errEl) {
+        errEl.textContent = 'Veuillez saisir une adresse email valide.';
+        errEl.classList.remove('hidden');
+      }
+      return;
+    }
+
+    const tx = this._pendingReceiptTransaction;
+    if (!tx?.id) {
+      if (errEl) { errEl.textContent = 'Erreur : transaction introuvable.'; errEl.classList.remove('hidden'); }
+      return;
+    }
+
+    // UI loading
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Envoi en cours…'; }
+
+    try {
+      const res  = await this.apiFetch(`${API_URL}/receipts/email`, {
+        method:  'POST',
+        body:    JSON.stringify({
+          transactionId: tx.id,
+          email,
+          storeEmail: consent,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de l\'envoi');
+      }
+
+      this.closeModal('ticketChoiceModal');
+      this.toastSuccess(`✅ Ticket envoyé à ${email}`);
+
+      if (consent && data.email_stored) {
+        this.toastInfo('📧 Email conservé pour l\'envoi du ticket uniquement (RGPD)');
+      }
+    } catch (e) {
+      if (errEl) {
+        errEl.textContent = e.message.includes('SMTP')
+          ? 'Serveur email non configuré — contactez l\'administrateur.'
+          : `Erreur : ${e.message}`;
+        errEl.classList.remove('hidden');
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<span>📤</span> Envoyer le ticket'; }
+    }
+  }
+
+  /** Imprime le ticket ET ferme le modal AGEC. */
+  printAndCloseTicketModal() {
+    const tx = this._pendingReceiptTransaction;
+    this.closeModal('ticketChoiceModal');
+    if (tx) {
+      this.showReceipt(tx);   // affiche le receipt modal standard avec bouton imprimer
+      setTimeout(() => this.printReceipt(), 400);
+    }
+  }
+
+  /** Ferme le modal AGEC sans rien faire (aucun ticket). */
+  closeTicketModal() {
+    this._pendingReceiptTransaction = null;
+    this.closeModal('ticketChoiceModal');
+  }
+
   showReceipt(transaction) {
     const receiptContent = document.getElementById('receiptContent');
-    const companyName = this.settings.company_name || 'Co-Caisse';
-    const companyAddress = this.settings.company_address || '';
-    const companyPhone = this.settings.company_phone || '';
+    const companyName    = this.settings?.company_name    || 'Co-Caisse';
+    const companyAddress = this.settings?.company_address || '';
+    const companyPhone   = this.settings?.company_phone   || '';
 
-    const items = typeof transaction.items === 'string' ? JSON.parse(transaction.items) : transaction.items;
-    const transactionDate = new Date(transaction.transaction_date);
+    const items           = typeof transaction.items === 'string'
+      ? JSON.parse(transaction.items) : (transaction.items || []);
+    const transactionDate = new Date(transaction.transaction_date || transaction.created_at);
 
-    const paymentMethods = {
-      'cash': 'ESPÈCES',
-      'card': 'CARTE BANCAIRE'
-    };
-
+    const paymentMethods = { cash: 'ESPÈCES', card: 'CARTE BANCAIRE', mixed: 'MIXTE' };
     const centerText = (text, width = 36) => {
-      const padding = Math.max(0, width - text.length);
-      return ' '.repeat(Math.floor(padding / 2)) + text;
+      const pad = Math.max(0, width - text.length);
+      return ' '.repeat(Math.floor(pad / 2)) + text;
     };
-
     const separator = '════════════════════════════════════';
-    const dash = '────────────────────────────────────';
+    const dash      = '────────────────────────────────────';
 
+    // ── En-tête ──────────────────────────────────────────────────────────────
     let receipt = `
 ${centerText(companyName.toUpperCase())}
 ${companyAddress ? centerText(companyAddress) : ''}
-${companyPhone ? centerText('Tél: ' + companyPhone) : ''}
+${companyPhone   ? centerText('Tél: ' + companyPhone) : ''}
 
 ${dash}
 ${centerText('REÇU DE CAISSE')}
@@ -2249,37 +2481,60 @@ ${separator}
 
 `;
 
+    // ── Articles ─────────────────────────────────────────────────────────────
     items.forEach(item => {
+      const rate = item.tax_rate ?? 20;
       receipt += `${item.name}\n`;
-      receipt += `  ${item.quantity} x ${item.price.toFixed(2)}€ = ${item.total.toFixed(2)}€\n`;
+      receipt += `  ${item.quantity} x ${Number(item.price).toFixed(2)}€  [TVA ${rate}%]`;
+      receipt += `  = ${(Number(item.price) * item.quantity).toFixed(2)}€\n`;
     });
 
-    receipt += `
-${dash}
+    // ── Ventilation TVA ───────────────────────────────────────────────────────
+    receipt += `\n${dash}\n`;
 
-Sous-total HT:        ${transaction.subtotal.toFixed(2)}€
-TVA (20%):            ${transaction.tax.toFixed(2)}€`;
+    // Calculer la ventilation depuis les items (fiable même à la réimpression)
+    const vatMap = {};
+    for (const item of items) {
+      const rate   = Number(item.tax_rate ?? 20);
+      const ttc    = Number(item.price) * item.quantity;
+      const ht     = ttc / (1 + rate / 100);
+      const tax    = ttc - ht;
+      const key    = String(rate);
+      if (!vatMap[key]) vatMap[key] = { rate, baseHt: 0, taxAmount: 0 };
+      vatMap[key].baseHt    += ht;
+      vatMap[key].taxAmount += tax;
+    }
+    const vatBreakdown = Object.values(vatMap).sort((a, b) => a.rate - b.rate);
+
+    const totalHt  = vatBreakdown.reduce((s, v) => s + v.baseHt,    0);
+    const totalTax = vatBreakdown.reduce((s, v) => s + v.taxAmount, 0);
+
+    receipt += `Sous-total HT:        ${totalHt.toFixed(2)}€\n`;
+
+    vatBreakdown.forEach(v => {
+      const label = `TVA ${v.rate}% sur ${v.baseHt.toFixed(2)}€:`;
+      receipt += `${label.padEnd(22)} ${v.taxAmount.toFixed(2)}€\n`;
+    });
 
     if (transaction.discount > 0) {
-      receipt += `\nRemise:              -${transaction.discount.toFixed(2)}€`;
+      receipt += `Remise:              -${Number(transaction.discount).toFixed(2)}€\n`;
     }
 
     receipt += `
-
 ${separator}
-TOTAL:                ${transaction.total.toFixed(2)}€
+TOTAL TTC:            ${Number(transaction.total).toFixed(2)}€
 ${separator}
 
 Paiement: ${paymentMethods[transaction.payment_method] || transaction.payment_method}`;
 
     if (transaction.change > 0) {
-      receipt += `\nRendu:                ${transaction.change.toFixed(2)}€`;
+      receipt += `\nRendu:                ${Number(transaction.change).toFixed(2)}€`;
     }
 
     receipt += `
 
 ${dash}
-${centerText(this.settings.receipt_footer || 'Merci de votre visite !')}
+${centerText(this.settings?.receipt_footer || 'Merci de votre visite !')}
 ${dash}
 `;
 
@@ -2345,7 +2600,19 @@ ${dash}
         alert_remind_after_dismiss: parseInt(document.getElementById('alertRemindAfterDismiss')?.value) || 10,
         // NF525 — chaînage fiscal
         fiscal_chain_enabled: document.getElementById('fiscalChainEnabled')?.checked ? 1 : 0,
+        fiscal_day_start_hour: parseInt(document.getElementById('fiscalDayStartHour')?.value) || 6,
+        // AGEC — ticket dématérialisé
+        agec_enabled: document.getElementById('agecEnabled')?.checked ? 1 : 0,
+        // RGPD — durée de conservation
+        rgpd_retention_months:      Math.max(parseInt(document.getElementById('rgpdRetentionMonths')?.value)     || 1, 1),
+        rgpd_logs_retention_months: Math.max(parseInt(document.getElementById('rgpdLogsRetentionMonths')?.value) || 1, 1),
       };
+
+      // Avertissement RGPD si valeur < 120 mois (test mode)
+      const warnEl = document.getElementById('rgpdRetentionWarning');
+      if (warnEl) {
+        warnEl.classList.toggle('hidden', settings.rgpd_retention_months >= 120);
+      }
 
       // Sauvegarder dans l'API
       const response = await this.apiFetch(`${API_URL}/settings`, {
@@ -2401,15 +2668,184 @@ ${dash}
           // NF525 — chaînage fiscal
           const fiscalCb = document.getElementById('fiscalChainEnabled');
           if (fiscalCb) fiscalCb.checked = settings.fiscal_chain_enabled === 1;
+          const fiscalHourEl = document.getElementById('fiscalDayStartHour');
+          if (fiscalHourEl) fiscalHourEl.value = settings.fiscal_day_start_hour ?? 6;
+
+          // AGEC — ticket dématérialisé
+          const agecCb = document.getElementById('agecEnabled');
+          if (agecCb) agecCb.checked = settings.agec_enabled !== 0; // activé par défaut
+
+          // RGPD — durée de conservation
+          const rgpdRet = document.getElementById('rgpdRetentionMonths');
+          if (rgpdRet) rgpdRet.value = settings.rgpd_retention_months ?? 120;
+          const rgpdLogs = document.getElementById('rgpdLogsRetentionMonths');
+          if (rgpdLogs) rgpdLogs.value = settings.rgpd_logs_retention_months ?? 12;
+          // Warning si valeur < 120 (mode test)
+          const warnEl = document.getElementById('rgpdRetentionWarning');
+          if (warnEl) warnEl.classList.toggle('hidden', (settings.rgpd_retention_months ?? 120) >= 120);
         }
 
         // Charger le statut fiscal (admin only)
         if (this.currentUser?.role === 'admin') {
           this.loadFiscalStatus();
+          this.loadRgpdStatus(); // Statut RGPD
         }
       }
     } catch (error) {
       console.error('Error loading settings:', error);
+    }
+  }
+
+  // ===== RGPD — CONSERVATION & PURGE =====
+
+  /** Charge et affiche le statut RGPD (dernière purge, config). */
+  async loadRgpdStatus() {
+    const block   = document.getElementById('rgpdStatusBlock');
+    const lastEl  = document.getElementById('rgpdLastPurge');
+    if (!block || !lastEl) return;
+
+    try {
+      const res = await this.apiFetch(`${API_URL}/rgpd/status`);
+      if (!res.ok) { lastEl.textContent = 'Service RGPD non disponible.'; return; }
+      const data = await res.json();
+
+      const cutoff = new Date(data.cutoff_date).toLocaleDateString('fr-FR');
+
+      if (data.last_purge) {
+        const runAt  = new Date(data.last_purge.run_at).toLocaleString('fr-FR');
+        const icon   = data.last_purge.status === 'success' ? '✅' : '⚠️';
+        const by     = data.last_purge.triggered_by === 'manual' ? 'Manuel' : 'Automatique';
+        lastEl.innerHTML =
+          `${icon} <strong>${runAt}</strong> — ${by}<br>` +
+          `Anonymisées : <strong>${data.last_purge.transactions_anonymized}</strong> tx · ` +
+          `Logs supprimés : <strong>${data.last_purge.logs_deleted}</strong><br>` +
+          `<span class="text-gray-400">Date pivot actuelle : données avant le ${cutoff}</span>`;
+      } else {
+        lastEl.innerHTML =
+          `<span class="text-gray-400">Aucune purge effectuée · ` +
+          `Date pivot actuelle : données avant le ${cutoff}</span>`;
+      }
+    } catch (e) {
+      lastEl.textContent = 'Erreur de chargement : ' + e.message;
+    }
+  }
+
+  /** Aperçu du nombre de transactions qui seraient anonymisées. */
+  async previewRgpdPurge() {
+    const resultEl   = document.getElementById('rgpdPurgeResult');
+    const testCutoff = document.getElementById('rgpdTestCutoff')?.value; // date ISO optionnelle
+    if (!resultEl) return;
+
+    try {
+      // Construire l'URL avec cutoff_date optionnel
+      const url = testCutoff
+        ? `${API_URL}/rgpd/preview?cutoff_date=${encodeURIComponent(testCutoff)}`
+        : `${API_URL}/rgpd/preview`;
+
+      const res  = await this.apiFetch(url);
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Erreur');
+
+      const cutoff     = new Date(data.cutoff_date).toLocaleDateString('fr-FR');
+      const testLabel  = testCutoff ? ` <span class="text-yellow-700 font-semibold">(date pivot forcée — mode test)</span>` : '';
+      const toAnon     = data.transactions_to_anonymize ?? 0;
+      const txTotal    = data.transactions_total ?? 0;
+      const txEmails   = data.transactions_emails ?? 0;
+      const ordNames   = data.orders_names ?? 0;
+
+      resultEl.className = `mt-3 p-3 rounded-lg border text-xs ${
+        toAnon > 0
+          ? 'border-amber-200 bg-amber-50 text-amber-800'
+          : 'border-indigo-200 bg-indigo-50 text-indigo-800'
+      }`;
+
+      let html = `🔍 <strong>Aperçu${testLabel} — avant le ${cutoff} :</strong><br>`;
+      html += `<table class="mt-1 w-full text-xs"><tbody>`;
+      html += `<tr><td class="pr-4">📋 Transactions totales dans la fenêtre :</td><td class="font-bold">${txTotal}</td></tr>`;
+      html += `<tr><td class="pr-4">📧 Avec email client à effacer :</td><td class="font-bold ${txEmails > 0 ? 'text-amber-700' : 'text-green-700'}">${txEmails}</td></tr>`;
+      html += `<tr><td class="pr-4">👤 Commandes avec nom/tel à anonymiser :</td><td class="font-bold ${ordNames > 0 ? 'text-amber-700' : 'text-green-700'}">${ordNames}</td></tr>`;
+      html += `</tbody></table>`;
+
+      if (toAnon === 0) {
+        html += `<br><span class="text-green-700 font-semibold">✅ Aucune donnée personnelle à anonymiser dans cette fenêtre.</span>`;
+        if (txTotal > 0) {
+          html += `<br><span class="text-indigo-500">${txTotal} transaction(s) fiscales conservées intactes (montants, TVA, articles).</span>`;
+        }
+      } else {
+        html += `<br><span class="text-amber-700 font-semibold">⚠️ ${toAnon} enregistrement(s) contiennent des données personnelles à anonymiser.</span>`;
+        html += `<br><span class="text-amber-600">Cliquez "Purger maintenant" pour lancer l'anonymisation.</span>`;
+      }
+
+      resultEl.innerHTML = html;
+      resultEl.classList.remove('hidden');
+    } catch (e) {
+      resultEl.className = 'mt-3 p-3 rounded-lg border text-xs border-red-200 bg-red-50 text-red-700';
+      resultEl.textContent = 'Erreur : ' + e.message;
+      resultEl.classList.remove('hidden');
+    }
+  }
+
+  /** Déclenche une purge RGPD manuelle avec confirmation. */
+  async triggerRgpdPurge() {
+    const btn        = document.getElementById('btnRgpdPurge');
+    const resultEl   = document.getElementById('rgpdPurgeResult');
+    const testCutoff = document.getElementById('rgpdTestCutoff')?.value;
+
+    const cutoffLabel = testCutoff
+      ? `date pivot forcée : <strong>${new Date(testCutoff).toLocaleDateString('fr-FR')}</strong> (mode test)`
+      : `date pivot calculée automatiquement (${this.settings?.rgpd_retention_months ?? 120} mois en arrière)`;
+
+    const confirmed = await this.confirm(
+      `Cette action va anonymiser les données personnelles (email) des transactions ` +
+      `et les données clients (nom, téléphone) des commandes antérieures à la ${cutoffLabel}.\n\n` +
+      `Les montants, produits et données fiscales restent intacts.\n\n` +
+      `Voulez-vous continuer ?`,
+      {
+        title:       '🛡️ Confirmation purge RGPD',
+        icon:        '⚠️',
+        type:        'warning',
+        confirmText: 'Anonymiser',
+        cancelText:  'Annuler',
+      }
+    );
+    if (!confirmed) return;
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Purge en cours…'; }
+
+    try {
+      const body = testCutoff ? { cutoff_date: testCutoff } : {};
+      const res  = await this.apiFetch(`${API_URL}/rgpd/purge`, {
+        method: 'POST',
+        body:   JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+      const icon = data.status === 'error' ? '⚠️' : '✅';
+      resultEl.className = `mt-3 p-3 rounded-lg border text-xs ${
+        data.status === 'error'
+          ? 'border-red-200 bg-red-50 text-red-700'
+          : 'border-green-200 bg-green-50 text-green-800'
+      }`;
+      resultEl.innerHTML =
+        `${icon} <strong>Purge terminée</strong>` +
+        (testCutoff ? ` <span class="text-yellow-700">(mode test — date pivot : ${new Date(testCutoff).toLocaleDateString('fr-FR')})</span>` : '') +
+        `<br>Enregistrements anonymisés : <strong>${data.transactions_anonymized}</strong><br>` +
+        `Logs supprimés : <strong>${data.logs_deleted}</strong>` +
+        (data.error_message ? `<br>⚠️ ${data.error_message}` : '');
+      resultEl.classList.remove('hidden');
+
+      await this.loadRgpdStatus();
+      this.toastSuccess(`✅ Purge RGPD — ${data.transactions_anonymized} enregistrement(s) anonymisé(s)`);
+    } catch (e) {
+      resultEl.className = 'mt-3 p-3 rounded-lg border text-xs border-red-200 bg-red-50 text-red-700';
+      resultEl.textContent = 'Erreur : ' + e.message;
+      resultEl.classList.remove('hidden');
+      this.toastError('Erreur RGPD : ' + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '🗑️ Purger maintenant'; }
     }
   }
 
@@ -2555,6 +2991,268 @@ ${dash}
       this.toastError('Erreur réseau : ' + e.message);
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalculer toute la chaîne avec la clé actuelle'; }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // CLÔTURE JOURNALIÈRE — Z-TICKET NF525
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Vérifie périodiquement le statut de la clôture et affiche le badge.
+   * Appelé au démarrage et toutes les 30 min.
+   */
+  async checkClosureStatus() {
+    if (this.currentUser?.role !== 'admin') return;
+    try {
+      const res = await this.apiFetch(`${API_URL}/fiscal/closure-status`);
+      if (!res.ok) return;
+      const data = await res.json();
+      this._closureStatus = data;
+
+      const badge   = document.getElementById('closureBadge');
+      const banner  = document.getElementById('closureWarningBanner');
+      const warnTxt = document.getElementById('closureWarningText');
+
+      if (data.warn_no_closure_hours && !data.already_closed) {
+        if (badge)  { badge.classList.remove('hidden'); }
+        if (banner) { banner.classList.remove('hidden'); }
+        if (warnTxt) {
+          warnTxt.textContent = data.warn_no_closure_hours >= 99
+            ? 'Aucune clôture journalière effectuée — des transactions existent sans être clôturées.'
+            : `La clôture journalière n'a pas été effectuée depuis plus de ${data.warn_no_closure_hours}h.`;
+        }
+      } else {
+        if (badge)  badge.classList.add('hidden');
+        if (banner) banner.classList.add('hidden');
+      }
+    } catch (_) { /* silencieux — ne pas bloquer l'UI */ }
+  }
+
+  /**
+   * Ouvre le modal de confirmation avant clôture.
+   * Affiche le résumé de la journée en cours.
+   */
+  async openClosureModal() {
+    this.openModal('closureConfirmModal');
+    const preview    = document.getElementById('closurePreview');
+    const alreadyEl  = document.getElementById('closureAlreadyDone');
+    const actionsEl  = document.getElementById('closureActions');
+    const confirmBtn = document.getElementById('btnConfirmClosure');
+
+    // Reset
+    if (alreadyEl)  alreadyEl.classList.add('hidden');
+    if (confirmBtn) confirmBtn.disabled = false;
+    if (preview)    preview.innerHTML = '<p class="text-center text-gray-400 text-sm">Chargement…</p>';
+
+    try {
+      const res  = await this.apiFetch(`${API_URL}/fiscal/closure-status`);
+      const data = await res.json();
+      this._closureStatus = data;
+
+      const fmtDate = iso => new Date(iso).toLocaleString('fr-FR', { timeZone: 'UTC' });
+      const fmtEur  = n   => Number(n).toFixed(2) + ' €';
+
+      if (preview) {
+        preview.innerHTML = `
+          <div class="flex justify-between text-gray-600">
+            <span>📅 Journée fiscale</span>
+            <span class="font-medium text-xs">${fmtDate(data.fiscal_day_start)} → ${fmtDate(data.fiscal_day_end)}</span>
+          </div>
+          <div class="flex justify-between text-gray-600">
+            <span>🧾 Transactions du jour</span>
+            <span class="font-bold text-gray-800">${data.transactions_today}</span>
+          </div>
+          ${data.already_closed ? '' : `
+          <div class="flex justify-between text-gray-600">
+            <span>💶 Total estimé TTC</span>
+            <span class="font-bold text-indigo-600">Calculé à la clôture</span>
+          </div>`}
+        `;
+      }
+
+      if (data.already_closed) {
+        if (alreadyEl) {
+          alreadyEl.innerHTML = `✅ La journée a déjà été clôturée — <strong>${data.closure?.closure_number}</strong><br>
+            <span class="text-xs text-green-600">le ${fmtDate(data.closure?.closed_at)}</span>`;
+          alreadyEl.classList.remove('hidden');
+        }
+        if (confirmBtn) confirmBtn.disabled = true;
+      }
+
+      if (data.transactions_today === 0 && !data.already_closed) {
+        if (confirmBtn) {
+          confirmBtn.textContent = '📋 Clôturer (0 transaction)';
+        }
+      }
+    } catch (e) {
+      if (preview) preview.innerHTML = `<p class="text-red-500 text-sm text-center">Erreur : ${e.message}</p>`;
+    }
+  }
+
+  /**
+   * Exécute réellement la clôture journalière (POST /api/fiscal/close-day).
+   */
+  async executeCloseDay() {
+    const confirmBtn = document.getElementById('btnConfirmClosure');
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Clôture en cours…'; }
+
+    try {
+      const res  = await this.apiFetch(`${API_URL}/fiscal/close-day`, { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        this.toastError(data.error || 'Erreur lors de la clôture');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '📋 Clôturer et générer le Z-Ticket'; }
+        return;
+      }
+
+      // Fermer le modal de confirmation, ouvrir le Z-ticket
+      this.closeModal('closureConfirmModal');
+      this._lastClosure = data;
+      this.showZticket(data);
+
+      // Rafraîchir badge
+      this.checkClosureStatus();
+      this.toastSuccess(`✅ ${data.closure_number} — Clôture effectuée (${data.transaction_count} transactions)`);
+    } catch (e) {
+      this.toastError('Erreur réseau : ' + e.message);
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '📋 Clôturer et générer le Z-Ticket'; }
+    }
+  }
+
+  /**
+   * Affiche le Z-ticket dans le modal dédié.
+   * @param {object} data - Réponse de POST /close-day ou GET /closures/:id
+   */
+  showZticket(data) {
+    const content   = document.getElementById('zticketContent');
+    const subtitle  = document.getElementById('zticketSubtitle');
+    const numEl     = document.getElementById('zticketNumber');
+    const summaryEl = document.getElementById('zticketSummary');
+
+    if (numEl)    numEl.textContent     = data.closure_number || '';
+    if (subtitle) subtitle.textContent  =
+      `Clôturé le ${new Date(data.closed_at || data.fiscal_day_start).toLocaleString('fr-FR', { timeZone: 'UTC' })}`;
+
+    if (content)  content.textContent   = data.zticket_content || 'Contenu non disponible';
+
+    // Résumé visuel rapide
+    const payLabels = { cash: '💵 Espèces', card: '💳 CB', mixed: '🔀 Mixte', other: '💱 Autre' };
+    const vatBreak  = Array.isArray(data.vat_breakdown)     ? data.vat_breakdown     : [];
+    const payBreak  = typeof data.payment_breakdown === 'object' ? data.payment_breakdown : {};
+
+    if (summaryEl) {
+      const statsHtml = [
+        `<div class="bg-indigo-50 rounded-lg p-2"><p class="text-gray-500">Transactions</p><p class="font-bold text-indigo-700 text-base">${data.transaction_count}</p></div>`,
+        `<div class="bg-green-50 rounded-lg p-2"><p class="text-gray-500">Total TTC</p><p class="font-bold text-green-700 text-base">${Number(data.total_ttc).toFixed(2)} €</p></div>`,
+        `<div class="bg-amber-50 rounded-lg p-2"><p class="text-gray-500">Total TVA</p><p class="font-bold text-amber-700 text-base">${Number(data.total_tax).toFixed(2)} €</p></div>`,
+        ...vatBreak.map(v =>
+          `<div class="bg-gray-50 rounded-lg p-2 col-span-1"><p class="text-gray-400 text-xs">TVA ${v.rate}%</p><p class="font-semibold text-gray-700">${Number(v.tax_amount).toFixed(2)} €</p></div>`
+        ),
+        ...Object.entries(payBreak).filter(([,v]) => Number(v) > 0).map(([k, v]) =>
+          `<div class="bg-gray-50 rounded-lg p-2 col-span-1"><p class="text-gray-400 text-xs">${payLabels[k] || k}</p><p class="font-semibold text-gray-700">${Number(v).toFixed(2)} €</p></div>`
+        ),
+      ].join('');
+      summaryEl.innerHTML = statsHtml;
+    }
+
+    this.openModal('zticketModal');
+  }
+
+  /**
+   * Imprime le Z-ticket.
+   */
+  printZticket() {
+    const content = document.getElementById('zticketContent')?.textContent || '';
+    if (!content) return;
+
+    if (window.electron) {
+      window.electron.printTicket(`<pre style="font-family:'Courier New',monospace;font-size:9pt;margin:0">${content}</pre>`);
+    } else {
+      const w = window.open('', '', 'height=800,width=420');
+      w.document.write(`<!DOCTYPE html><html><head><title>Z-Ticket</title>
+        <style>body{font-family:'Courier New',monospace;margin:10px;font-size:9pt}pre{white-space:pre;margin:0}</style>
+        </head><body><pre>${content}</pre>
+        <script>window.onload=()=>{window.print();window.close()}<\/script></body></html>`);
+      w.document.close();
+    }
+  }
+
+  /**
+   * Exporte le Z-ticket en PDF (via impression navigateur en mode PDF).
+   */
+  exportZticketPDF() {
+    const content  = document.getElementById('zticketContent')?.textContent || '';
+    const numEl    = document.getElementById('zticketNumber')?.textContent   || 'Z-ticket';
+    if (!content) return;
+
+    const w = window.open('', '', 'height=900,width=500');
+    w.document.write(`<!DOCTYPE html><html><head><title>${numEl}</title>
+      <style>
+        @page { size: A4 portrait; margin: 10mm; }
+        body { font-family: 'Courier New', monospace; font-size: 8pt; }
+        pre  { white-space: pre; margin: 0; }
+      </style></head><body>
+      <pre>${content}</pre>
+      <script>window.onload = () => { window.print(); }<\/script>
+      </body></html>`);
+    w.document.close();
+    this.toastSuccess('Fenêtre d\'impression ouverte — choisissez "Enregistrer en PDF"');
+  }
+
+  /**
+   * Ouvre le modal avec l'historique des clôtures passées.
+   */
+  async openClosuresHistory() {
+    this.openModal('closuresHistoryModal');
+    const listEl = document.getElementById('closuresHistoryList');
+    if (listEl) listEl.innerHTML = '<p class="text-center text-gray-400 py-8">Chargement…</p>';
+
+    try {
+      const res      = await this.apiFetch(`${API_URL}/fiscal/closures?limit=30`);
+      const closures = await res.json();
+
+      if (!Array.isArray(closures) || closures.length === 0) {
+        listEl.innerHTML = '<p class="text-center text-gray-400 py-8">Aucune clôture enregistrée</p>';
+        return;
+      }
+
+      listEl.innerHTML = closures.map(c => {
+        const fmtDate = iso => new Date(iso).toLocaleString('fr-FR', { timeZone: 'UTC' });
+        return `
+          <div class="flex items-center justify-between p-3 bg-white rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition"
+               onclick="app.openClosureDetail('${c.id}')">
+            <div class="flex items-center gap-3">
+              <span class="text-lg font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg min-w-[55px] text-center">${c.closure_number}</span>
+              <div>
+                <p class="font-medium text-gray-800 text-sm">${fmtDate(c.closed_at)}</p>
+                <p class="text-xs text-gray-400">${c.transaction_count} transaction(s)</p>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="font-bold text-indigo-600">${Number(c.total_ttc).toFixed(2)} €</p>
+              <p class="text-xs text-gray-400">TTC</p>
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      listEl.innerHTML = `<p class="text-center text-red-400 py-8">Erreur : ${e.message}</p>`;
+    }
+  }
+
+  /**
+   * Ouvre le détail d'une clôture passée et affiche son Z-ticket.
+   */
+  async openClosureDetail(closureId) {
+    try {
+      const res  = await this.apiFetch(`${API_URL}/fiscal/closures/${closureId}`);
+      if (!res.ok) throw new Error('Clôture introuvable');
+      const data = await res.json();
+      this.closeModal('closuresHistoryModal');
+      this.showZticket(data);
+    } catch (e) {
+      this.toastError('Erreur : ' + e.message);
     }
   }
 

@@ -61,6 +61,11 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
       alert_served_minutes = 30,
       alert_remind_after_dismiss = 10,
       fiscal_chain_enabled = 0,
+      fiscal_day_start_hour = 6,
+      agec_enabled = 1,
+      // RGPD — durée de conservation
+      rgpd_retention_months = 120,
+      rgpd_logs_retention_months = 12,
     } = req.body;
 
     // Vérifier si des settings existent déjà
@@ -88,6 +93,10 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           alert_served_minutes = ?,
           alert_remind_after_dismiss = ?,
           fiscal_chain_enabled = ?,
+          fiscal_day_start_hour = ?,
+          agec_enabled = ?,
+          rgpd_retention_months = ?,
+          rgpd_logs_retention_months = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?`,
         [
@@ -96,7 +105,9 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           alert_enabled, alert_sound_enabled,
           alert_draft_minutes, alert_validated_minutes, alert_kitchen_minutes,
           alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss,
-          fiscal_chain_enabled,
+          fiscal_chain_enabled, fiscal_day_start_hour, agec_enabled,
+          Math.max(parseInt(rgpd_retention_months) || 1, 1),
+          Math.max(parseInt(rgpd_logs_retention_months) || 1, 1),
           existing.id,
         ]
       );
@@ -110,15 +121,18 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           alert_enabled, alert_sound_enabled,
           alert_draft_minutes, alert_validated_minutes, alert_kitchen_minutes,
           alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss,
-          fiscal_chain_enabled
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          fiscal_chain_enabled, fiscal_day_start_hour, agec_enabled,
+          rgpd_retention_months, rgpd_logs_retention_months
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           uuidv4(), company_name, company_address, company_phone, company_email, tax_number,
           currency, default_tax_rate, receipt_header, receipt_footer,
           alert_enabled, alert_sound_enabled,
           alert_draft_minutes, alert_validated_minutes, alert_kitchen_minutes,
           alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss,
-          fiscal_chain_enabled
+          fiscal_chain_enabled, fiscal_day_start_hour, agec_enabled,
+          Math.max(parseInt(rgpd_retention_months) || 1, 1),
+          Math.max(parseInt(rgpd_logs_retention_months) || 1, 1),
         ]
       );
     }

@@ -279,3 +279,228 @@ export async function testSmtpConnection() {
   return { ok: true };
 }
 
+
+// ══════════════════════════════════════════════════════════════
+// EXPORT : sendReceiptEmail  (loi AGEC — ticket dématérialisé)
+// ══════════════════════════════════════════════════════════════
+/**
+ * Envoie le ticket de caisse par email au client (loi AGEC août 2023).
+ *
+ * @param {object} opts
+ * @param {string}  opts.to            Email du client
+ * @param {object}  opts.transaction   Objet transaction complet (depuis DB)
+ * @param {object}  opts.settings      Paramètres établissement (company_name, etc.)
+ */
+export async function sendReceiptEmail({ to, transaction, settings = {} }) {
+  const transporter = _createTransporter();
+  const from        = process.env.SMTP_FROM || '"Co-Caisse" <noreply@co-caisse.fr>';
+  const companyName = settings.company_name || 'Co-Caisse';
+  const dateStr     = new Date(transaction.transaction_date || transaction.created_at)
+    .toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const html = _buildReceiptHtml({ transaction, settings });
+  const text = _buildReceiptText({ transaction, settings });
+
+  const info = await transporter.sendMail({
+    from,
+    to,
+    subject: `🧾 Votre ticket de caisse — ${companyName} — ${dateStr}`,
+    text,
+    html,
+  });
+
+  console.log(`[email] Ticket envoyé à ${to} — TX: ${transaction.id} — messageId: ${info.messageId}`);
+  return info;
+}
+
+// ── Template HTML du ticket de caisse ────────────────────────────────────────
+function _buildReceiptHtml({ transaction, settings }) {
+  const esc           = _esc;
+  const companyName   = settings.company_name    || 'Co-Caisse';
+  const companyAddr   = settings.company_address || '';
+  const companyPhone  = settings.company_phone   || '';
+  const companyEmail  = settings.company_email   || '';
+  const taxNumber     = settings.tax_number      || '';
+  const receiptFooter = settings.receipt_footer  || 'Merci de votre visite !';
+  const year          = new Date().getFullYear();
+
+  const items = (() => {
+    try { return typeof transaction.items === 'string' ? JSON.parse(transaction.items) : (transaction.items || []); }
+    catch (_) { return []; }
+  })();
+
+  const txDate = new Date(transaction.transaction_date || transaction.created_at);
+  const dateLabel = txDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const timeLabel = txDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  const payLabels = { cash: 'Espèces', card: 'Carte bancaire', mixed: 'Mixte' };
+  const payLabel  = payLabels[transaction.payment_method] || transaction.payment_method;
+
+  // Calcul ventilation TVA depuis les items
+  const vatMap = {};
+  for (const item of items) {
+    const rate  = Number(item.tax_rate ?? 20);
+    const ttc   = Number(item.price) * item.quantity;
+    const ht    = ttc / (1 + rate / 100);
+    const tax   = ttc - ht;
+    const key   = String(rate);
+    if (!vatMap[key]) vatMap[key] = { rate, baseHt: 0, taxAmount: 0 };
+    vatMap[key].baseHt    += ht;
+    vatMap[key].taxAmount += tax;
+  }
+  const vatBreakdown = Object.values(vatMap).sort((a, b) => a.rate - b.rate);
+  const totalHt      = vatBreakdown.reduce((s, v) => s + v.baseHt, 0);
+  const totalTax     = vatBreakdown.reduce((s, v) => s + v.taxAmount, 0);
+
+  const itemsRows = items.map(item => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;">${esc(item.name)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:14px;color:#64748b;text-align:center;">${item.quantity}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#94a3b8;text-align:center;">TVA ${item.tax_rate ?? 20}%</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;text-align:right;font-weight:600;">${(Number(item.price) * item.quantity).toFixed(2)} €</td>
+    </tr>`).join('');
+
+  const vatRows = vatBreakdown.map(v => `
+    <tr>
+      <td style="padding:5px 12px;font-size:13px;color:#64748b;">TVA ${v.rate}% (base HT : ${v.baseHt.toFixed(2)} €)</td>
+      <td style="padding:5px 12px;font-size:13px;color:#64748b;text-align:right;">${v.taxAmount.toFixed(2)} €</td>
+    </tr>`).join('');
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Ticket de caisse — ${esc(companyName)}</title>
+</head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:30px 0;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
+
+        <!-- Header établissement -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);border-radius:16px 16px 0 0;padding:32px 32px 24px;text-align:center;">
+            <p style="margin:0 0 6px;font-size:28px;">🧾</p>
+            <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">${esc(companyName.toUpperCase())}</h1>
+            ${companyAddr  ? `<p style="margin:4px 0 0;color:#c7d2fe;font-size:13px;">${esc(companyAddr)}</p>` : ''}
+            ${companyPhone ? `<p style="margin:2px 0 0;color:#c7d2fe;font-size:13px;">Tél : ${esc(companyPhone)}</p>` : ''}
+            ${taxNumber    ? `<p style="margin:2px 0 0;color:#a5b4fc;font-size:12px;">N° TVA : ${esc(taxNumber)}</p>` : ''}
+          </td>
+        </tr>
+
+        <!-- Infos transaction -->
+        <tr>
+          <td style="background:#fff;padding:20px 32px 0;">
+            <table width="100%">
+              <tr>
+                <td style="font-size:13px;color:#64748b;">📅 ${dateLabel} à ${timeLabel}</td>
+                <td style="font-size:13px;color:#64748b;text-align:right;font-family:monospace;">N° ${esc(transaction.receipt_number || '')}</td>
+              </tr>
+            </table>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0 0;">
+          </td>
+        </tr>
+
+        <!-- Articles -->
+        <tr>
+          <td style="background:#fff;padding:0 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="padding:8px 12px;font-size:12px;color:#94a3b8;text-align:left;font-weight:600;text-transform:uppercase;">Article</th>
+                  <th style="padding:8px 12px;font-size:12px;color:#94a3b8;text-align:center;font-weight:600;text-transform:uppercase;">Qté</th>
+                  <th style="padding:8px 12px;font-size:12px;color:#94a3b8;text-align:center;font-weight:600;text-transform:uppercase;">TVA</th>
+                  <th style="padding:8px 12px;font-size:12px;color:#94a3b8;text-align:right;font-weight:600;text-transform:uppercase;">Montant</th>
+                </tr>
+              </thead>
+              <tbody>${itemsRows}</tbody>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Totaux -->
+        <tr>
+          <td style="background:#fff;padding:0 32px 20px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;border-top:1px solid #e2e8f0;">
+              <tr><td style="padding:6px 12px;font-size:13px;color:#64748b;">Sous-total HT</td>
+                  <td style="padding:6px 12px;font-size:13px;color:#64748b;text-align:right;">${totalHt.toFixed(2)} €</td></tr>
+              ${vatRows}
+              ${Number(transaction.discount) > 0 ? `
+              <tr><td style="padding:6px 12px;font-size:13px;color:#16a34a;">Remise</td>
+                  <td style="padding:6px 12px;font-size:13px;color:#16a34a;text-align:right;">-${Number(transaction.discount).toFixed(2)} €</td></tr>` : ''}
+              <tr style="background:#f8fafc;">
+                <td style="padding:12px;font-size:16px;font-weight:700;color:#1e293b;">TOTAL TTC</td>
+                <td style="padding:12px;font-size:18px;font-weight:700;color:#4f46e5;text-align:right;">${Number(transaction.total).toFixed(2)} €</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Paiement -->
+        <tr>
+          <td style="background:#f0fdf4;padding:16px 32px;border-top:1px solid #bbf7d0;">
+            <p style="margin:0;font-size:14px;color:#166534;">
+              💳 Paiement : <strong>${esc(payLabel)}</strong>
+              ${Number(transaction.change) > 0 ? ` &nbsp;|&nbsp; Rendu : <strong>${Number(transaction.change).toFixed(2)} €</strong>` : ''}
+            </p>
+          </td>
+        </tr>
+
+        <!-- Pied de page -->
+        <tr>
+          <td style="background:#fff;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="margin:0;font-size:13px;color:#64748b;">${esc(receiptFooter)}</p>
+            <p style="margin:8px 0 0;font-size:11px;color:#94a3b8;font-style:italic;">
+              Ticket envoyé à la demande du client — loi AGEC (août 2023)
+            </p>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#1e1b4b;border-radius:0 0 16px 16px;padding:18px 32px;text-align:center;">
+            <p style="margin:0;color:#a5b4fc;font-size:12px;">Co-Caisse © ${year} — Document fiscal</p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// ── Template texte brut du ticket ────────────────────────────────────────────
+function _buildReceiptText({ transaction, settings }) {
+  const companyName  = settings.company_name    || 'Co-Caisse';
+  const companyAddr  = settings.company_address || '';
+  const receiptFooter = settings.receipt_footer || 'Merci de votre visite !';
+
+  const items = (() => {
+    try { return typeof transaction.items === 'string' ? JSON.parse(transaction.items) : (transaction.items || []); }
+    catch (_) { return []; }
+  })();
+
+  const txDate   = new Date(transaction.transaction_date || transaction.created_at);
+  const payLabels = { cash: 'Espèces', card: 'Carte bancaire', mixed: 'Mixte' };
+  const sep = '========================================';
+  const dash = '----------------------------------------';
+
+  let txt = `${sep}\n  ${companyName.toUpperCase()}\n`;
+  if (companyAddr) txt += `  ${companyAddr}\n`;
+  txt += `${sep}\n`;
+  txt += `Date  : ${txDate.toLocaleDateString('fr-FR')} ${txDate.toLocaleTimeString('fr-FR')}\n`;
+  txt += `N°    : ${transaction.receipt_number || ''}\n`;
+  txt += `${dash}\n`;
+  items.forEach(it => {
+    txt += `${it.name}\n  ${it.quantity} x ${Number(it.price).toFixed(2)}€ [TVA ${it.tax_rate ?? 20}%] = ${(Number(it.price)*it.quantity).toFixed(2)}€\n`;
+  });
+  txt += `${dash}\n`;
+  txt += `TOTAL TTC : ${Number(transaction.total).toFixed(2)} €\n`;
+  txt += `Paiement  : ${payLabels[transaction.payment_method] || transaction.payment_method}\n`;
+  txt += `${sep}\n${receiptFooter}\nTicket envoyé à la demande du client (loi AGEC)\n`;
+  return txt;
+}
+
+

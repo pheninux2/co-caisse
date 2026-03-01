@@ -2849,6 +2849,302 @@ ${dash}
     }
   }
 
+  // ===== RGPD — DROIT À L'EFFACEMENT (Art. 17) =====
+
+  /** Bascule entre l'onglet Produits et l'onglet Clients RGPD. */
+  switchProductsTab(tab) {
+    const isAdmin = this.currentUser?.role === 'admin';
+
+    // Onglets boutons
+    document.querySelectorAll('.products-tab-btn').forEach(btn => {
+      btn.classList.remove('border-indigo-500', 'text-indigo-600', 'bg-indigo-50');
+      btn.classList.add('border-transparent', 'text-gray-500');
+    });
+    const activeBtn = document.getElementById(tab === 'products' ? 'tabProducts' : 'tabRgpd');
+    if (activeBtn) {
+      activeBtn.classList.add('border-indigo-500', 'text-indigo-600', 'bg-indigo-50');
+      activeBtn.classList.remove('border-transparent', 'text-gray-500');
+    }
+
+    // Panneaux
+    const panelProd = document.getElementById('panelProducts');
+    const panelRgpd = document.getElementById('panelRgpd');
+    if (tab === 'rgpd' && isAdmin) {
+      panelProd?.classList.add('hidden');    panelProd?.classList.remove('flex');
+      panelRgpd?.classList.remove('hidden'); panelRgpd?.classList.add('flex');
+    } else {
+      panelRgpd?.classList.add('hidden');    panelRgpd?.classList.remove('flex');
+      panelProd?.classList.remove('hidden'); panelProd?.classList.add('flex');
+    }
+  }
+
+  /** Recherche un client par nom/email/téléphone via GET /api/rgpd/search-customers. */
+  async searchRgpdCustomers() {
+    const input   = document.getElementById('rgpdSearchInput');
+    const errEl   = document.getElementById('rgpdSearchError');
+    const resBox  = document.getElementById('rgpdSearchResults');
+    const listEl  = document.getElementById('rgpdResultsList');
+    const countEl = document.getElementById('rgpdResultsCount');
+    const query   = input?.value?.trim();
+
+    if (errEl) errEl.classList.add('hidden');
+    if (!query || query.length < 2) {
+      if (errEl) { errEl.textContent = 'Saisissez au moins 2 caractères.'; errEl.classList.remove('hidden'); }
+      return;
+    }
+
+    if (listEl) listEl.innerHTML = '<p class="text-center text-gray-400 py-6 text-sm">Recherche…</p>';
+    if (resBox) resBox.classList.remove('hidden');
+
+    try {
+      const res  = await this.apiFetch(`${API_URL}/rgpd/search-customers?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur');
+
+      if (countEl) countEl.textContent = `${data.total} résultat(s)`;
+
+      if (!data.results?.length) {
+        listEl.innerHTML = '<p class="text-center text-gray-400 py-6 text-sm">Aucun client trouvé avec données personnelles.</p>';
+        return;
+      }
+
+      listEl.innerHTML = data.results.map((r, idx) => {
+        const icon   = r.type === 'transactions' ? '📧' : '👤';
+        const label  = r.identifier;
+        const detail = r.detail ? ` · ${r.detail}` : '';
+        const count  = r.type === 'transactions'
+          ? `${r.tx_count} transaction(s)`
+          : `${r.order_count} commande(s)`;
+        const lastSeen = new Date(r.last_seen).toLocaleDateString('fr-FR');
+
+        // Stocker les données dans un tableau accessible globalement
+        if (!window._rgpdSearchResults) window._rgpdSearchResults = [];
+        window._rgpdSearchResults[idx] = r;
+
+        return `
+          <div class="flex items-center justify-between p-3 hover:bg-gray-50 transition">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-gray-800 flex items-center gap-1.5">
+                <span>${icon}</span>
+                <span class="truncate">${this._esc(label)}${this._esc(detail)}</span>
+              </p>
+              <p class="text-xs text-gray-400 mt-0.5">${count} · Dernière activité : ${lastSeen}</p>
+            </div>
+            <button onclick="app.openRgpdAnonymizeModalByIndex(${idx})"
+              class="ml-3 flex-shrink-0 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-semibold rounded-lg transition">
+              🗑️ Anonymiser
+            </button>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      if (errEl) { errEl.textContent = 'Erreur : ' + e.message; errEl.classList.remove('hidden'); }
+      if (listEl) listEl.innerHTML = '';
+    }
+  }
+
+  /** Ouvre le modal depuis l'index du tableau de résultats (évite les problèmes de quotes dans onclick). */
+  openRgpdAnonymizeModalByIndex(idx) {
+    const r = window._rgpdSearchResults?.[idx];
+    if (!r) return;
+    const email = r.type === 'transactions' ? r.identifier : null;
+    const name  = r.type === 'orders'       ? r.identifier : null;
+    this.openRgpdAnonymizeModal(email, name);
+  }
+
+  /** Ouvre le modal de confirmation RGPD (étape 1). */
+  openRgpdAnonymizeModal(customerEmail = null, customerName = null) {
+    // Stocker les données du client à anonymiser
+    this._rgpdTarget = { customerEmail, customerName };
+
+    // Remplir le récap client
+    const targetEl = document.getElementById('rgpdAnonymizeTarget');
+    if (targetEl) {
+      const lines = [];
+      if (customerEmail) lines.push(`📧 Email : <strong>${this._esc(customerEmail)}</strong>`);
+      if (customerName)  lines.push(`👤 Nom   : <strong>${this._esc(customerName)}</strong>`);
+      targetEl.innerHTML = lines.join('<br>');
+    }
+
+    // Réinitialiser les champs
+    const reasonEl = document.getElementById('rgpdAnonymizeReason');
+    if (reasonEl) reasonEl.value = '';
+    const confirmInput = document.getElementById('rgpdConfirmInput');
+    if (confirmInput) confirmInput.value = '';
+    const errEl = document.getElementById('rgpdAnonymizeError');
+    if (errEl) errEl.classList.add('hidden');
+
+    // Afficher étape 1, cacher étape 2
+    document.getElementById('rgpdStep1')?.classList.remove('hidden');
+    document.getElementById('rgpdStep2')?.classList.add('hidden');
+
+    this.openModal('rgpdAnonymizeModal');
+  }
+
+  /** Passe à l'étape 2 de confirmation. */
+  rgpdAnonymizeStep2() {
+    document.getElementById('rgpdStep1')?.classList.add('hidden');
+    document.getElementById('rgpdStep2')?.classList.remove('hidden');
+    document.getElementById('rgpdConfirmInput')?.focus();
+  }
+
+  /** Retourne à l'étape 1. */
+  rgpdAnonymizeBack() {
+    document.getElementById('rgpdStep2')?.classList.add('hidden');
+    document.getElementById('rgpdStep1')?.classList.remove('hidden');
+  }
+
+  /** Exécute l'anonymisation après saisie de "CONFIRMER". */
+  async rgpdAnonymizeConfirm() {
+    const confirmInput = document.getElementById('rgpdConfirmInput');
+    const errEl        = document.getElementById('rgpdAnonymizeError');
+    const btn          = document.getElementById('btnRgpdConfirmAnonymize');
+
+    if (errEl) errEl.classList.add('hidden');
+
+    if (confirmInput?.value?.trim().toUpperCase() !== 'CONFIRMER') {
+      if (errEl) { errEl.textContent = 'Tapez exactement "CONFIRMER" pour valider.'; errEl.classList.remove('hidden'); }
+      return;
+    }
+
+    const { customerEmail, customerName } = this._rgpdTarget || {};
+    const reason = document.getElementById('rgpdAnonymizeReason')?.value?.trim()
+      || 'Droit à l\'effacement RGPD Art. 17';
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Anonymisation…'; }
+
+    try {
+      const body = { reason };
+      if (customerEmail) body.customer_email = customerEmail;
+      if (customerName)  body.customer_name  = customerName;
+
+      const res  = await this.apiFetch(`${API_URL}/rgpd/anonymize-customer`, {
+        method: 'POST',
+        body:   JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+      this.closeModal('rgpdAnonymizeModal');
+
+      // Générer et afficher le rapport
+      this._showRgpdReport(data);
+
+      // Rafraîchir les résultats de recherche
+      await this.searchRgpdCustomers();
+      this.toastSuccess(`✅ Client anonymisé — ${data.total_affected} enregistrement(s) traité(s)`);
+
+    } catch (e) {
+      if (errEl) { errEl.textContent = 'Erreur : ' + e.message; errEl.classList.remove('hidden'); }
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '🛡️ Anonymiser définitivement'; }
+    }
+  }
+
+  /** Génère et affiche le rapport de conformité RGPD dans le modal rapport. */
+  _showRgpdReport(data) {
+    const adminName    = this.currentUser?.username || 'admin';
+    const companyName  = this.settings?.company_name || 'Co-Caisse';
+    const execAt       = new Date(data.executed_at).toLocaleString('fr-FR');
+    const sep          = '═'.repeat(50);
+    const dash         = '─'.repeat(50);
+
+    const report = `${sep}
+  RAPPORT DE CONFORMITÉ RGPD
+  Droit à l'effacement — Article 17 RGPD
+${sep}
+
+Établissement   : ${companyName}
+Date d'exécution: ${execAt}
+Exécuté par     : ${adminName}
+Référence       : ${data.run_id}
+
+${dash}
+DONNÉES DU CLIENT CONCERNÉ
+${dash}
+${data.customer_email ? `Email           : ${data.customer_email}` : ''}
+${data.customer_name  ? `Nom             : ${data.customer_name}` : ''}
+Motif           : ${data.reason}
+
+${dash}
+RÉSULTAT DE L'OPÉRATION
+${dash}
+Statut          : ${data.status === 'success' ? '✅ SUCCÈS' : '⚠️ ' + data.status.toUpperCase()}
+Transactions    : ${data.transactions_anonymized} enregistrement(s) anonymisé(s)
+Commandes       : ${data.orders_anonymized} enregistrement(s) anonymisé(s)
+Total affecté   : ${data.total_affected} enregistrement(s)
+
+${dash}
+DONNÉES CONSERVÉES (OBLIGATION FISCALE)
+${dash}
+• Montants des transactions (HT, TVA, TTC)
+• Détail des articles et quantités
+• Numéros de tickets de caisse
+• Dates et modes de paiement
+
+${dash}
+DONNÉES EFFACÉES
+${dash}
+• Nom du client → "Client anonymisé"
+• Email du client → NULL
+• Téléphone du client → NULL
+
+${sep}
+Ce rapport constitue la preuve de conformité de
+l'exercice du droit à l'effacement (RGPD Art. 17).
+À conserver dans le registre des activités de
+traitement (RGPD Art. 30).
+${sep}`;
+
+    // Stocker pour impression/téléchargement
+    this._lastRgpdReport = report;
+    this._lastRgpdReportData = data;
+
+    const contentEl = document.getElementById('rgpdReportContent');
+    if (contentEl) contentEl.textContent = report;
+
+    this.openModal('rgpdReportModal');
+  }
+
+  /** Imprime le rapport RGPD. */
+  printRgpdReport() {
+    const content = this._lastRgpdReport || '';
+    const win = window.open('', '', 'height=700,width=600');
+    win.document.write(`<!DOCTYPE html><html lang="fr"><head>
+      <title>Rapport RGPD</title>
+      <style>
+        body { font-family: 'Courier New', monospace; font-size: 11pt; margin: 20px; }
+        pre { white-space: pre-wrap; }
+      </style>
+    </head><body>
+      <pre>${content.replace(/</g, '&lt;')}</pre>
+      <script>window.onload=()=>{window.print();window.close();}<\/script>
+    </body></html>`);
+    win.document.close();
+  }
+
+  /** Télécharge le rapport RGPD en fichier .txt. */
+  downloadRgpdReport() {
+    const content  = this._lastRgpdReport || '';
+    const data     = this._lastRgpdReportData;
+    const filename = `rapport-rgpd-${data?.run_id?.slice(0,8) || 'export'}-${new Date().toISOString().slice(0,10)}.txt`;
+    const blob     = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href         = url;
+    a.download     = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Échappe le HTML pour éviter les injections. */
+  _esc(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   // ===== NF525 — CHAÎNAGE FISCAL =====
 
   /**

@@ -162,5 +162,186 @@ router.post('/purge', async (req, res) => {
   }
 });
 
+// ── GET /api/rgpd/search-customers ──────────────────────────────────────────
+// Recherche de clients par email ou nom (dans orders) — admin uniquement
+// Query : ?q=jean  ou  ?email=jean@...  ou  ?name=Jean
+router.get('/search-customers', async (req, res) => {
+  try {
+    const db    = req.app.locals.db;
+    const query = (req.query.q || req.query.email || req.query.name || '').trim();
+
+    if (!query || query.length < 2) {
+      return res.status(400).json({ error: 'Requête trop courte — minimum 2 caractères' });
+    }
+
+    const like = `%${query}%`;
+
+    // Chercher dans orders (customer_name, customer_phone)
+    const ordersRows = await db.all(
+      `SELECT
+         customer_name,
+         customer_phone,
+         COUNT(*) AS order_count,
+         MIN(created_at) AS first_seen,
+         MAX(created_at) AS last_seen
+       FROM \`orders\`
+       WHERE (customer_name LIKE ? OR customer_phone LIKE ?)
+         AND customer_name IS NOT NULL
+         AND customer_name != 'Client anonymisé'
+       GROUP BY customer_name, customer_phone
+       ORDER BY last_seen DESC
+       LIMIT 20`,
+      [like, like]
+    );
+
+    // Chercher dans transactions (customer_email)
+    const txRows = await db.all(
+      `SELECT
+         customer_email,
+         COUNT(*) AS tx_count,
+         MIN(created_at) AS first_seen,
+         MAX(created_at) AS last_seen
+       FROM \`transactions\`
+       WHERE customer_email LIKE ?
+         AND customer_email IS NOT NULL
+       GROUP BY customer_email
+       ORDER BY last_seen DESC
+       LIMIT 20`,
+      [like]
+    );
+
+    // Fusionner les résultats
+    const results = [];
+
+    for (const row of ordersRows) {
+      results.push({
+        type:        'orders',
+        identifier:  row.customer_name,
+        detail:      row.customer_phone || null,
+        order_count: row.order_count,
+        tx_count:    0,
+        first_seen:  row.first_seen,
+        last_seen:   row.last_seen,
+      });
+    }
+
+    for (const row of txRows) {
+      results.push({
+        type:        'transactions',
+        identifier:  row.customer_email,
+        detail:      null,
+        order_count: 0,
+        tx_count:    row.tx_count,
+        first_seen:  row.first_seen,
+        last_seen:   row.last_seen,
+      });
+    }
+
+    res.json({ results, total: results.length, query });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/rgpd/anonymize-customer ────────────────────────────────────────
+// Droit à l'effacement RGPD Art. 17 — anonymisation ciblée d'un client
+// Body : { customer_email?, customer_name?, reason? }
+router.post('/anonymize-customer', async (req, res) => {
+  try {
+    const db           = req.app.locals.db;
+    const adminId      = req.user?.id || null;
+    const adminName    = req.user?.username || 'admin';
+    const { customer_email, customer_name, reason = 'Droit à l\'effacement RGPD Art. 17' } = req.body;
+
+    if (!customer_email && !customer_name) {
+      return res.status(400).json({
+        error: 'Fournir au moins customer_email ou customer_name',
+      });
+    }
+
+    const runAt   = new Date();
+    const runId   = (await import('uuid')).v4();
+    let   txCount = 0;
+    let   ordersCount = 0;
+    let   errorMsg    = null;
+    let   status      = 'success';
+
+    try {
+      // ── 1. Anonymiser les transactions (customer_email) ──────────────────
+      if (customer_email) {
+        const r = await db.run(
+          `UPDATE \`transactions\`
+           SET customer_email = NULL
+           WHERE customer_email = ?`,
+          [customer_email]
+        );
+        txCount = r.affectedRows ?? 0;
+      }
+
+      // ── 2. Anonymiser les orders (customer_name + customer_phone) ─────────
+      if (customer_name) {
+        const r = await db.run(
+          `UPDATE \`orders\`
+           SET
+             customer_name  = 'Client anonymisé',
+             customer_phone = NULL
+           WHERE customer_name = ?
+             AND customer_name != 'Client anonymisé'`,
+          [customer_name]
+        );
+        ordersCount = r.affectedRows ?? 0;
+      }
+
+    } catch (err) {
+      status   = 'error';
+      errorMsg = err.message;
+      console.error('[RGPD] anonymize-customer error:', err.message);
+    }
+
+    const totalAffected = txCount + ordersCount;
+
+    // ── 3. Logger dans rgpd_purge_logs ────────────────────────────────────
+    try {
+      const fmtDate = (d) => new Date(d).toISOString().replace('T', ' ').substring(0, 19);
+      await db.run(
+        `INSERT INTO \`rgpd_purge_logs\`
+           (id, run_at, triggered_by, triggered_by_user, retention_months,
+            cutoff_date, transactions_anonymized, logs_deleted, status, error_message)
+         VALUES (?, ?, 'manual', ?, 0, ?, ?, 0, ?, ?)`,
+        [
+          runId,
+          fmtDate(runAt),
+          adminId,
+          fmtDate(runAt),
+          totalAffected,
+          status,
+          errorMsg ?? `Droit à l'effacement — ${customer_email || customer_name} — par ${adminName}. ${reason}`,
+        ]
+      );
+    } catch (logErr) {
+      console.error('[RGPD] log error:', logErr.message);
+    }
+
+    console.log(`[RGPD] ✓ anonymize-customer — ${customer_email || customer_name} — ${totalAffected} enreg. par ${adminName}`);
+
+    res.json({
+      success:          status !== 'error',
+      run_id:           runId,
+      status,
+      customer_email:   customer_email   || null,
+      customer_name:    customer_name    || null,
+      transactions_anonymized: txCount,
+      orders_anonymized:       ordersCount,
+      total_affected:          totalAffected,
+      executed_at:      runAt.toISOString(),
+      executed_by:      adminName,
+      reason,
+      error_message:    errorMsg || null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
 

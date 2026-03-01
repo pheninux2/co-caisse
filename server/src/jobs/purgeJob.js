@@ -107,9 +107,12 @@ export async function runPurgeNow(db, triggeredBy = 'cron', adminUserId = null, 
         `UPDATE \`orders\`
          SET
            customer_name  = CASE WHEN customer_name  IS NOT NULL THEN 'Client anonymisé' ELSE NULL END,
-           customer_phone = CASE WHEN customer_phone IS NOT NULL THEN NULL ELSE NULL END
+           customer_phone = NULL
          WHERE created_at < ?
-           AND (customer_name IS NOT NULL OR customer_phone IS NOT NULL)`,
+           AND (
+             (customer_name  IS NOT NULL AND customer_name  != 'Client anonymisé')
+             OR customer_phone IS NOT NULL
+           )`,
         [_fmtDate(cutoffDate)]
       );
       ordersAnonymized = ordersResult.affectedRows ?? 0;

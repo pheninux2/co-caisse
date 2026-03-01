@@ -471,107 +471,29 @@
 
                 <!-- Products Panel -->
                 <div class="flex-1 flex flex-col min-h-0 bg-gray-50">
-
-                    <!-- Onglets Gestion / Clients RGPD (admin uniquement) -->
-                    <div class="flex bg-white border-b border-gray-200 px-3 pt-2 gap-1 flex-shrink-0" id="productsPanelTabs">
-                        <button onclick="app.switchProductsTab('products')" id="tabProducts"
-                            class="products-tab-btn px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-indigo-500 text-indigo-600 bg-indigo-50">
-                            📦 Produits
-                        </button>
-                        <button onclick="app.switchProductsTab('rgpd')" id="tabRgpd"
-                            class="products-tab-btn px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                            data-role="admin">
-                            🛡️ Clients RGPD
+                    <div class="p-3 bg-white border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
+                        <input type="text" id="productsSearch" placeholder="Rechercher produit..."
+                               class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button onclick="app.openProductDialog()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap">
+                            + Nouveau produit
                         </button>
                     </div>
-
-                    <!-- Panneau Produits (par défaut) -->
-                    <div id="panelProducts" class="flex flex-col flex-1 min-h-0">
-                        <div class="p-3 bg-white border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
-                            <input type="text" id="productsSearch" placeholder="Rechercher produit..."
-                                   class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                            <button onclick="app.openProductDialog()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap">
-                                + Nouveau produit
-                            </button>
-                        </div>
-                        <div class="flex-1 overflow-y-auto p-3">
-                            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                                <table class="w-full text-sm">
-                                    <thead class="bg-gray-50 sticky top-0">
-                                        <tr>
-                                            <th class="px-3 py-2 text-left font-semibold text-gray-600">Produit</th>
-                                            <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden sm:table-cell">Catégorie</th>
-                                            <th class="px-3 py-2 text-right font-semibold text-gray-600">Prix</th>
-                                            <th class="px-3 py-2 text-center font-semibold text-gray-600 hidden md:table-cell">Stock</th>
-                                            <th class="px-3 py-2 text-center font-semibold text-gray-600 w-20">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="productsTable" class="divide-y divide-gray-100">
-                                        <tr><td colspan="5" class="text-center py-4 text-gray-400">Chargement...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Panneau Clients RGPD (admin uniquement) -->
-                    <div id="panelRgpd" class="hidden flex-col flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-
-                        <!-- En-tête -->
-                        <div class="bg-white rounded-xl shadow-sm p-4">
-                            <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2 mb-1">
-                                <span>🛡️</span> Droit à l'effacement — RGPD Art. 17
-                            </h3>
-                            <p class="text-sm text-gray-500">
-                                Recherchez un client par nom ou email pour anonymiser toutes ses données personnelles
-                                dans les transactions et commandes. <strong>Les données fiscales (montants, produits, TVA) restent intactes.</strong>
-                            </p>
-                        </div>
-
-                        <!-- Recherche client -->
-                        <div class="bg-white rounded-xl shadow-sm p-4">
-                            <label class="block text-sm font-semibold text-gray-700 mb-2">🔍 Rechercher un client</label>
-                            <div class="flex gap-2">
-                                <input type="text" id="rgpdSearchInput"
-                                    placeholder="Nom, email ou téléphone…"
-                                    class="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                                    onkeydown="if(event.key==='Enter') app.searchRgpdCustomers()">
-                                <button onclick="app.searchRgpdCustomers()"
-                                    class="px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-semibold transition flex items-center gap-2">
-                                    🔍 Rechercher
-                                </button>
-                            </div>
-                            <div id="rgpdSearchError" class="hidden mt-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2"></div>
-                        </div>
-
-                        <!-- Résultats de recherche -->
-                        <div id="rgpdSearchResults" class="hidden bg-white rounded-xl shadow-sm overflow-hidden">
-                            <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                                <h4 class="font-semibold text-gray-700 text-sm">Résultats</h4>
-                                <span id="rgpdResultsCount" class="text-xs text-gray-400"></span>
-                            </div>
-                            <div id="rgpdResultsList" class="divide-y divide-gray-50 max-h-80 overflow-y-auto"></div>
-                        </div>
-
-                        <!-- Info RGPD -->
-                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-1">
-                            <p class="font-semibold">ℹ️ Ce qui est anonymisé / conservé</p>
-                            <div class="grid grid-cols-2 gap-2 mt-2">
-                                <div class="space-y-1">
-                                    <p class="font-medium text-red-700">❌ Effacé</p>
-                                    <p>• Nom du client</p>
-                                    <p>• Email du client</p>
-                                    <p>• Téléphone du client</p>
-                                </div>
-                                <div class="space-y-1">
-                                    <p class="font-medium text-green-700">✅ Conservé (obligation fiscale)</p>
-                                    <p>• Montants des transactions</p>
-                                    <p>• Détail des articles</p>
-                                    <p>• Taux et montants TVA</p>
-                                    <p>• Numéros de ticket</p>
-                                </div>
-                            </div>
-                            <p class="mt-2 text-blue-600">Chaque action est enregistrée dans le journal de purge RGPD.</p>
+                    <div class="flex-1 overflow-y-auto p-3">
+                        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600">Produit</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden sm:table-cell">Catégorie</th>
+                                        <th class="px-3 py-2 text-right font-semibold text-gray-600">Prix</th>
+                                        <th class="px-3 py-2 text-center font-semibold text-gray-600 hidden md:table-cell">Stock</th>
+                                        <th class="px-3 py-2 text-center font-semibold text-gray-600 w-20">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="productsTable" class="divide-y divide-gray-100">
+                                    <tr><td colspan="5" class="text-center py-4 text-gray-400">Chargement...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -673,352 +595,368 @@
             </section>
 
             <!-- ============ SETTINGS SECTION ============ -->
-            <section id="settings-section" class="hidden h-full overflow-y-auto p-4">
-                <div class="max-w-2xl mx-auto space-y-4">
-                    <!-- Company Settings -->
-                    <div class="bg-white rounded-xl shadow-sm p-4">
-                        <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                            <span>🏢</span> Informations entreprise
-                        </h3>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div class="sm:col-span-2">
-                                <label class="text-xs font-semibold text-gray-600 mb-1 block">Nom de l'entreprise</label>
-                                <input type="text" id="companyName" placeholder="Nom" class="settings-input">
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label class="text-xs font-semibold text-gray-600 mb-1 block">Adresse</label>
-                                <input type="text" id="companyAddress" placeholder="Adresse complète" class="settings-input">
-                            </div>
-                            <div>
-                                <label class="text-xs font-semibold text-gray-600 mb-1 block">Téléphone</label>
-                                <input type="text" id="companyPhone" placeholder="Téléphone" class="settings-input">
-                            </div>
-                            <div>
-                                <label class="text-xs font-semibold text-gray-600 mb-1 block">Email</label>
-                                <input type="email" id="companyEmail" placeholder="Email" class="settings-input">
-                            </div>
-                            <div>
-                                <label class="text-xs font-semibold text-gray-600 mb-1 block">SIRET/TVA</label>
-                                <input type="text" id="taxNumber" placeholder="Numéro" class="settings-input">
-                            </div>
-                            <div>
-                                <label class="text-xs font-semibold text-gray-600 mb-1 block">TVA par défaut (%)</label>
-                                <input type="number" id="defaultTaxRate" placeholder="20" class="settings-input">
-                            </div>
-                        </div>
-                    </div>
+            <section id="settings-section" class="hidden h-full flex flex-col overflow-hidden bg-gray-50">
 
-                    <!-- Receipt Settings -->
-                    <div class="bg-white rounded-xl shadow-sm p-4">
-                        <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                            <span>🧾</span> Configuration ticket
-                        </h3>
-                        <div class="space-y-3">
-                            <div>
-                                <label class="text-xs font-semibold text-gray-600 mb-1 block">En-tête du ticket</label>
-                                <textarea id="receiptHeader" rows="2" placeholder="Texte d'en-tête..." class="settings-input"></textarea>
-                            </div>
-                            <div>
-                                <label class="text-xs font-semibold text-gray-600 mb-1 block">Pied de page</label>
-                                <textarea id="receiptFooter" rows="2" placeholder="Texte de pied de page..." class="settings-input"></textarea>
-                            </div>
-                        </div>
+                <!-- Barre de sous-onglets -->
+                <div class="flex-shrink-0 bg-white border-b border-gray-200 px-4 pt-3 overflow-x-auto">
+                    <div class="flex gap-1 min-w-max">
+                        <button onclick="app.showSettingsTab('etablissement')" id="stab-etablissement"
+                            class="settings-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-indigo-500 text-indigo-600 bg-indigo-50 whitespace-nowrap transition">
+                            🏢 Établissement
+                        </button>
+                        <button onclick="app.showSettingsTab('ticket')" id="stab-ticket"
+                            class="settings-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 whitespace-nowrap transition">
+                            🧾 Ticket
+                        </button>
+                        <button onclick="app.showSettingsTab('alertes')" id="stab-alertes"
+                            class="settings-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 whitespace-nowrap transition">
+                            🔔 Alertes
+                        </button>
+                        <button onclick="app.showSettingsTab('utilisateurs')" id="stab-utilisateurs"
+                            class="settings-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 whitespace-nowrap transition">
+                            👥 Utilisateurs
+                        </button>
+                        <button onclick="app.showSettingsTab('rgpd')" id="stab-rgpd"
+                            class="settings-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 whitespace-nowrap transition">
+                            🛡️ RGPD
+                        </button>
+                        <button onclick="app.showSettingsTab('avance')" id="stab-avance"
+                            class="settings-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 whitespace-nowrap transition">
+                            ⚙️ Avancé
+                        </button>
                     </div>
+                </div>
 
-                    <!-- Alert Settings -->
-                    <div class="bg-white rounded-xl shadow-sm p-4">
-                        <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                            <span>🔔</span> Configuration des alertes commandes
-                        </h3>
-                        <div class="space-y-3">
-                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <!-- Contenu des onglets -->
+                <div class="flex-1 overflow-y-auto p-4">
+
+                    <!-- ══ ONGLET 1 — 🏢 ÉTABLISSEMENT ══ -->
+                    <div id="stab-panel-etablissement" class="settings-tab-panel max-w-2xl mx-auto space-y-4">
+                        <div class="bg-white rounded-xl shadow-sm p-4">
+                            <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><span>🏢</span> Informations entreprise</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="sm:col-span-2">
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Nom de l'entreprise</label>
+                                    <input type="text" id="companyName" placeholder="Nom" class="settings-input">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Adresse</label>
+                                    <input type="text" id="companyAddress" placeholder="Adresse complète" class="settings-input">
+                                </div>
                                 <div>
-                                    <p class="font-medium text-gray-700 text-sm">Activer les alertes</p>
-                                    <p class="text-xs text-gray-500">Recevoir des notifications pour les commandes en retard</p>
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Téléphone</label>
+                                    <input type="text" id="companyPhone" placeholder="Téléphone" class="settings-input">
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Email</label>
+                                    <input type="email" id="companyEmail" placeholder="Email" class="settings-input">
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">SIRET / TVA</label>
+                                    <input type="text" id="taxNumber" placeholder="Numéro" class="settings-input">
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">TVA par défaut (%)</label>
+                                    <input type="number" id="defaultTaxRate" placeholder="20" class="settings-input">
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="app.saveSettings()" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl transition shadow-lg">💾 Enregistrer</button>
+                    </div>
+
+                    <!-- ══ ONGLET 2 — 🧾 TICKET ══ -->
+                    <div id="stab-panel-ticket" class="settings-tab-panel hidden max-w-2xl mx-auto space-y-4">
+                        <div class="bg-white rounded-xl shadow-sm p-4">
+                            <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><span>🧾</span> Mise en page du ticket</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">En-tête du ticket</label>
+                                    <textarea id="receiptHeader" rows="3" placeholder="Texte d'en-tête..." class="settings-input"></textarea>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Pied de page</label>
+                                    <textarea id="receiptFooter" rows="3" placeholder="Texte de pied de page..." class="settings-input"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- AGEC -->
+                        <div class="bg-white rounded-xl shadow-sm p-4">
+                            <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2"><span>📧</span> Ticket dématérialisé — Loi AGEC</h3>
+                            <p class="text-xs text-gray-500 mb-4">Depuis août 2023, le ticket n'est plus imprimé automatiquement. Un modal propose au client de recevoir son ticket par email ou de l'imprimer à la demande.</p>
+                            <div class="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg mb-3">
+                                <div>
+                                    <p class="font-medium text-blue-800 text-sm">Activer la proposition de ticket dématérialisé</p>
+                                    <p class="text-xs text-blue-600">Modal de choix après chaque encaissement (email / imprimer / aucun)</p>
                                 </div>
                                 <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="alertEnabled" class="sr-only peer">
-                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                    <input type="checkbox" id="agecEnabled" class="sr-only peer" checked>
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
                                 </label>
                             </div>
-
-                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                <div>
-                                    <p class="font-medium text-gray-700 text-sm">Son d'alerte</p>
-                                    <p class="text-xs text-gray-500">Jouer un son lors des nouvelles alertes</p>
-                                </div>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="alertSoundEnabled" class="sr-only peer">
-                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                                </label>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">⏳ En attente de validation (min)</label>
-                                    <input type="number" id="alertDraftMinutes" min="1" max="120" placeholder="15" class="settings-input">
-                                    <p class="text-xs text-gray-400 mt-1">Temps max avant validation</p>
-                                </div>
-                                <div>
-                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">👨‍🍳 Alerte Cuisine (min)</label>
-                                    <input type="number" id="alertKitchenMinutes" min="1" max="120" placeholder="20" class="settings-input">
-                                    <p class="text-xs text-gray-400 mt-1">Temps max en cuisine</p>
-                                </div>
-                                <div>
-                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">🔔 Alerte Prête (min)</label>
-                                    <input type="number" id="alertReadyMinutes" min="1" max="120" placeholder="5" class="settings-input">
-                                    <p class="text-xs text-gray-400 mt-1">Temps avant service</p>
-                                </div>
-                                <div class="col-span-2">
-                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">🍽️ Alerte Servie (min)</label>
-                                    <input type="number" id="alertServedMinutes" min="1" max="120" placeholder="30" class="settings-input">
-                                    <p class="text-xs text-gray-400 mt-1">Temps avant paiement</p>
-                                </div>
-                                <div class="col-span-2">
-                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">🔁 Relance après masquage (min)</label>
-                                    <input type="number" id="alertRemindAfterDismiss" min="1" max="60" placeholder="10" class="settings-input">
-                                    <p class="text-xs text-gray-400 mt-1">Temps avant nouvelle notification si non traitée</p>
-                                </div>
-                            </div>
-
-                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                <p class="text-xs text-blue-800">
-                                    <strong>ℹ️ Info:</strong> Les alertes critiques (2x le délai) déclenchent une notification sonore. Les alertes masquées seront relancées après le délai configuré si la commande n'est pas traitée.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Users Management -->
-                    <div class="bg-white rounded-xl shadow-sm p-4">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="font-bold text-gray-800 flex items-center gap-2">
-                                <span>👥</span> Utilisateurs
-                            </h3>
-                            <button onclick="app.openUserDialog()" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg transition">
-                                + Nouveau
-                            </button>
-                        </div>
-                        <div id="usersTable" class="space-y-2">
-                            <p class="text-gray-400 text-center py-4 text-sm">Chargement...</p>
-                        </div>
-                    </div>
-
-                    <!-- NF525 — Conformité fiscale France -->
-                    <div class="bg-white rounded-xl shadow-sm p-4" id="fiscalChainBlock">
-                        <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2">
-                            <span>🔐</span> Conformité fiscale NF525
-                        </h3>
-                        <p class="text-xs text-gray-500 mb-4">
-                            Chaînage cryptographique des transactions (loi anti-fraude TVA France). Chaque encaissement est signé par un HMAC-SHA256 lié au précédent. <strong>Requiert la variable <code>FISCAL_HMAC_KEY</code> dans le fichier .env du serveur.</strong>
-                        </p>
-
-                        <!-- Toggle activation -->
-                        <div class="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg mb-3">
-                            <div>
-                                <p class="font-medium text-amber-800 text-sm">Activer le chaînage NF525</p>
-                                <p class="text-xs text-amber-600">Les nouvelles transactions seront signées cryptographiquement</p>
-                            </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="fiscalChainEnabled" class="sr-only peer">
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                            </label>
-                        </div>
-
-                        <!-- Heure de début journée fiscale -->
-                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3">
-                            <div>
-                                <p class="font-medium text-gray-700 text-sm">🕕 Début journée fiscale</p>
-                                <p class="text-xs text-gray-500">Heure de début (la journée se termine 24h après)</p>
-                            </div>
-                            <select id="fiscalDayStartHour" class="border border-gray-200 rounded-lg px-2 py-1 text-sm">
-                                <option value="0">00:00</option>
-                                <option value="1">01:00</option>
-                                <option value="2">02:00</option>
-                                <option value="3">03:00</option>
-                                <option value="4">04:00</option>
-                                <option value="5">05:00</option>
-                                <option value="6" selected>06:00 (défaut)</option>
-                                <option value="7">07:00</option>
-                                <option value="8">08:00</option>
-                                <option value="9">09:00</option>
-                            </select>
-                        </div>
-
-                        <!-- Statut de la chaîne -->
-                        <div id="fiscalChainStatus" class="hidden p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 mb-3 space-y-1">
-                            <div class="flex items-center gap-2">
-                                <span id="fiscalChainStatusDot" class="w-2 h-2 rounded-full bg-gray-400 inline-block"></span>
-                                <span id="fiscalChainStatusText">Chargement…</span>
-                            </div>
-                            <div id="fiscalChainDetails" class="text-gray-400 pl-4"></div>
-                        </div>
-
-                        <!-- Bouton vérification chaîne -->
-                        <div class="flex gap-2">
-                            <button onclick="app.verifyFiscalChain()"
-                                id="btnVerifyChain"
-                                class="flex-1 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition flex items-center justify-center gap-2">
-                                🔍 Vérifier l'intégrité de la chaîne
-                            </button>
-                            <button onclick="app.loadFiscalStatus()"
-                                class="py-2 px-3 text-sm bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-lg transition"
-                                title="Rafraîchir le statut">
-                                🔄
-                            </button>
-                        </div>
-
-                        <!-- Résultat de la vérification -->
-                        <div id="fiscalVerifyResult" class="hidden mt-3 p-3 rounded-lg border text-xs"></div>
-
-                        <!-- Bouton recalcul — visible uniquement si anomalies (changement de clé HMAC) -->
-                        <div id="fiscalResetBlock" class="hidden mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                            <p class="text-xs text-orange-800 mb-2">
-                                <strong>⚠️ Changement de clé HMAC détecté ?</strong><br>
-                                Si vous avez modifié <code>FISCAL_HMAC_KEY</code> dans le .env après avoir créé des transactions, recalculez la chaîne avec la nouvelle clé.
-                            </p>
-                            <button onclick="app.resetFiscalChain()"
-                                id="btnResetChain"
-                                class="w-full py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2">
-                                🔄 Recalculer toute la chaîne avec la clé actuelle
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- AGEC — Ticket dématérialisé -->
-                    <div class="bg-white rounded-xl shadow-sm p-4">
-                        <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2">
-                            <span>📧</span> Ticket dématérialisé — Loi AGEC
-                        </h3>
-                        <p class="text-xs text-gray-500 mb-4">
-                            Depuis août 2023, le ticket de caisse n'est plus imprimé automatiquement en France.
-                            Lorsque cette option est activée, un modal propose au client de recevoir son ticket par email ou de l'imprimer à la demande.
-                        </p>
-
-                        <!-- Toggle activation AGEC -->
-                        <div class="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg mb-3">
-                            <div>
-                                <p class="font-medium text-blue-800 text-sm">Activer la proposition de ticket dématérialisé</p>
-                                <p class="text-xs text-blue-600">Modal de choix après chaque encaissement (email / imprimer / aucun)</p>
-                            </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="agecEnabled" class="sr-only peer" checked>
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
-                            </label>
-                        </div>
-
-                        <!-- Bloc info SMTP -->
-                        <div id="agecSmtpInfo" class="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 space-y-1">
-                            <p class="font-semibold text-gray-700">📬 Configuration email requise</p>
-                            <p>Pour envoyer les tickets par email, renseignez les variables SMTP dans <code class="bg-gray-200 px-1 rounded">server/.env</code> :</p>
-                            <pre class="bg-gray-800 text-green-400 rounded-lg p-2 mt-1 text-xs overflow-x-auto leading-relaxed">SMTP_HOST=smtp.gmail.com
+                            <div id="agecSmtpInfo" class="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 space-y-1">
+                                <p class="font-semibold text-gray-700">📬 Configuration SMTP requise</p>
+                                <p>Renseignez les variables dans <code class="bg-gray-200 px-1 rounded">server/.env</code> :</p>
+                                <pre class="bg-gray-800 text-green-400 rounded-lg p-2 mt-1 text-xs overflow-x-auto">SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=votre@email.com
 SMTP_PASS=votre_mot_de_passe
 SMTP_FROM="Co-Caisse" &lt;noreply@exemple.fr&gt;</pre>
-                            <p class="text-gray-400 mt-1">Sans SMTP configuré, le bouton "Email" sera désactivé — les options Imprimer et Aucun ticket restent disponibles.</p>
+                            </div>
+                        </div>
+                        <button onclick="app.saveSettings()" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl transition shadow-lg">💾 Enregistrer</button>
+                    </div>
+
+                    <!-- ══ ONGLET 3 — 🔔 ALERTES ══ -->
+                    <div id="stab-panel-alertes" class="settings-tab-panel hidden max-w-2xl mx-auto space-y-4">
+                        <div class="bg-white rounded-xl shadow-sm p-4">
+                            <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><span>🔔</span> Configuration des alertes commandes</h3>
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <p class="font-medium text-gray-700 text-sm">Activer les alertes</p>
+                                        <p class="text-xs text-gray-500">Notifications pour les commandes en retard</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="alertEnabled" class="sr-only peer">
+                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                    </label>
+                                </div>
+                                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <p class="font-medium text-gray-700 text-sm">Son d'alerte</p>
+                                        <p class="text-xs text-gray-500">Jouer un son lors des nouvelles alertes</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="alertSoundEnabled" class="sr-only peer">
+                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                    </label>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="text-xs font-semibold text-gray-600 mb-1 block">⏳ En attente validation (min)</label>
+                                        <input type="number" id="alertDraftMinutes" min="1" max="120" placeholder="15" class="settings-input">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-semibold text-gray-600 mb-1 block">👨‍🍳 Alerte Cuisine (min)</label>
+                                        <input type="number" id="alertKitchenMinutes" min="1" max="120" placeholder="20" class="settings-input">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-semibold text-gray-600 mb-1 block">🔔 Alerte Prête (min)</label>
+                                        <input type="number" id="alertReadyMinutes" min="1" max="120" placeholder="5" class="settings-input">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-semibold text-gray-600 mb-1 block">🍽️ Alerte Servie (min)</label>
+                                        <input type="number" id="alertServedMinutes" min="1" max="120" placeholder="30" class="settings-input">
+                                    </div>
+                                    <div class="col-span-2">
+                                        <label class="text-xs font-semibold text-gray-600 mb-1 block">🔁 Relance après masquage (min)</label>
+                                        <input type="number" id="alertRemindAfterDismiss" min="1" max="60" placeholder="10" class="settings-input">
+                                    </div>
+                                </div>
+                                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                    <p class="text-xs text-blue-800"><strong>ℹ️</strong> Les alertes critiques (2× le délai) déclenchent une notification sonore.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="app.saveSettings()" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl transition shadow-lg">💾 Enregistrer</button>
+                    </div>
+
+                    <!-- ══ ONGLET 4 — 👥 UTILISATEURS ══ -->
+                    <div id="stab-panel-utilisateurs" class="settings-tab-panel hidden max-w-2xl mx-auto space-y-4">
+                        <div class="bg-white rounded-xl shadow-sm p-4">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-bold text-gray-800 flex items-center gap-2"><span>👥</span> Gestion des utilisateurs</h3>
+                                <button onclick="app.openUserDialog()" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg transition">+ Nouveau</button>
+                            </div>
+                            <div id="usersTable" class="space-y-2">
+                                <p class="text-gray-400 text-center py-4 text-sm">Chargement...</p>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- RGPD — Conservation des données -->
-                    <div class="bg-white rounded-xl shadow-sm p-4">
-                        <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2">
-                            <span>🛡️</span> RGPD — Conservation des données
-                        </h3>
-                        <p class="text-xs text-gray-500 mb-4">
-                            Un job automatique s'exécute chaque nuit à 03h00 et anonymise les données personnelles
-                            des clients au-delà de la durée configurée.
-                            <strong>Les transactions fiscales ne sont jamais supprimées</strong> (obligation légale).
-                        </p>
-
-                        <!-- Rétention transactions -->
-                        <div class="p-3 bg-indigo-50 border border-indigo-200 rounded-lg mb-3">
-                            <div class="flex items-center justify-between mb-1">
-                                <div>
-                                    <p class="font-medium text-indigo-800 text-sm">🧾 Données clients (transactions)</p>
-                                    <p class="text-xs text-indigo-600">customer_name, email, téléphone → anonymisés après X mois</p>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <input type="number" id="rgpdRetentionMonths"
-                                        value="120" min="1" max="360" step="1"
-                                        class="w-20 border border-indigo-300 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-indigo-400">
-                                    <span class="text-xs text-indigo-700 font-medium">mois</span>
-                                </div>
-                            </div>
-                            <p id="rgpdRetentionWarning" class="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1 hidden">
-                                ⚠️ Valeur inférieure au minimum légal de <strong>120 mois (10 ans)</strong> — à utiliser uniquement en test
-                            </p>
-                            <p class="text-xs text-gray-400 mt-1">
-                                Minimum légal France : <strong>120 mois (10 ans)</strong> — obligation fiscale (LPF art. L102 B)
-                            </p>
-                        </div>
-
-                        <!-- Rétention logs -->
-                        <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg mb-3">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="font-medium text-gray-700 text-sm">📋 Logs applicatifs</p>
-                                    <p class="text-xs text-gray-500">Supprimés après X mois (table app_logs)</p>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <input type="number" id="rgpdLogsRetentionMonths"
-                                        value="12" min="1" max="120" step="1"
-                                        class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-gray-400">
-                                    <span class="text-xs text-gray-600 font-medium">mois</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Mode test : date pivot personnalisée -->
-                        <div class="p-3 bg-yellow-50 border border-yellow-300 rounded-lg mb-3">
-                            <p class="font-semibold text-yellow-800 text-sm mb-1">🧪 Mode test — Date pivot personnalisée</p>
-                            <p class="text-xs text-yellow-700 mb-2">
-                                Pour tester sans attendre 10 ans, forcez une date pivot future.
-                                Toutes les transactions <strong>antérieures</strong> à cette date seront anonymisées.
-                            </p>
-                            <div class="flex items-center gap-2">
-                                <input type="date" id="rgpdTestCutoff"
-                                    class="flex-1 border border-yellow-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-yellow-400">
-                                <button onclick="app.previewRgpdPurge()"
-                                    class="px-3 py-1.5 text-xs bg-yellow-200 hover:bg-yellow-300 text-yellow-800 font-semibold rounded-lg transition">
-                                    🔍 Aperçu
+                    <!-- ══ ONGLET 5 — 🛡️ RGPD ══ -->
+                    <div id="stab-panel-rgpd" class="settings-tab-panel hidden max-w-2xl mx-auto space-y-4">
+                        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <!-- Sous-onglets RGPD -->
+                            <div class="flex border-b border-gray-100">
+                                <button onclick="app.showRgpdSubTab('conservation')" id="rtab-conservation"
+                                    class="rgpd-subtab flex-1 py-3 text-sm font-medium text-indigo-600 bg-indigo-50 border-b-2 border-indigo-500 transition">
+                                    ⏱️ Conservation
+                                </button>
+                                <button onclick="app.showRgpdSubTab('clients')" id="rtab-clients"
+                                    class="rgpd-subtab flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-b-2 border-transparent transition">
+                                    👤 Clients
+                                </button>
+                                <button onclick="app.showRgpdSubTab('journal')" id="rtab-journal"
+                                    class="rgpd-subtab flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-b-2 border-transparent transition">
+                                    📋 Journal
                                 </button>
                             </div>
-                            <p class="text-xs text-yellow-600 mt-1">Laisser vide = utiliser la date pivot calculée automatiquement (120 mois en arrière)</p>
-                        </div>
 
-                        <!-- Statut dernière purge + aperçu -->
-                        <div id="rgpdStatusBlock" class="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 mb-3">
-                            <p class="font-semibold text-gray-700 mb-1">📊 Dernière purge automatique</p>
-                            <div id="rgpdLastPurge" class="text-gray-400">Chargement…</div>
-                        </div>
+                            <!-- Sous-onglet Conservation -->
+                            <div id="rtab-panel-conservation" class="p-4 space-y-4">
+                                <div>
+                                    <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2"><span>⏱️</span> Conservation des données</h3>
+                                    <p class="text-xs text-gray-500">Job automatique chaque nuit à 03h00. <strong>Les transactions fiscales ne sont jamais supprimées</strong> (LPF Art. L102 B).</p>
+                                </div>
+                                <div class="p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <div>
+                                            <p class="font-medium text-indigo-800 text-sm">🧾 Données clients</p>
+                                            <p class="text-xs text-indigo-600">email, nom, téléphone → anonymisés après X mois</p>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="number" id="rgpdRetentionMonths" value="120" min="1" max="360" step="1"
+                                                class="w-20 border border-indigo-300 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-indigo-400">
+                                            <span class="text-xs text-indigo-700 font-medium">mois</span>
+                                        </div>
+                                    </div>
+                                    <p id="rgpdRetentionWarning" class="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1 hidden">
+                                        ⚠️ Valeur inférieure au minimum légal de <strong>120 mois (10 ans)</strong> — test uniquement
+                                    </p>
+                                    <p class="text-xs text-gray-400 mt-1">Minimum légal France : <strong>120 mois (10 ans)</strong></p>
+                                </div>
+                                <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="font-medium text-gray-700 text-sm">📋 Logs applicatifs</p>
+                                            <p class="text-xs text-gray-500">Supprimés après X mois</p>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="number" id="rgpdLogsRetentionMonths" value="12" min="1" max="120" step="1"
+                                                class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-gray-400">
+                                            <span class="text-xs text-gray-600 font-medium">mois</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Mode test -->
+                                <div class="p-3 bg-yellow-50 border border-yellow-300 rounded-lg">
+                                    <p class="font-semibold text-yellow-800 text-sm mb-1">🧪 Mode test — Date pivot</p>
+                                    <p class="text-xs text-yellow-700 mb-2">Forcez une date pivot future pour tester sans attendre 10 ans.</p>
+                                    <div class="flex items-center gap-2">
+                                        <input type="date" id="rgpdTestCutoff" class="flex-1 border border-yellow-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-yellow-400">
+                                        <button onclick="app.previewRgpdPurge()" class="px-3 py-1.5 text-xs bg-yellow-200 hover:bg-yellow-300 text-yellow-800 font-semibold rounded-lg transition">🔍 Aperçu</button>
+                                    </div>
+                                </div>
+                                <!-- Statut purge -->
+                                <div id="rgpdStatusBlock" class="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600">
+                                    <p class="font-semibold text-gray-700 mb-1">📊 Dernière purge automatique</p>
+                                    <div id="rgpdLastPurge" class="text-gray-400">Chargement…</div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="app.loadRgpdStatus()" class="flex-1 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">🔄 Rafraîchir</button>
+                                    <button onclick="app.previewRgpdPurge()" class="flex-1 py-2 text-sm bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">🔍 Aperçu</button>
+                                    <button onclick="app.triggerRgpdPurge()" id="btnRgpdPurge" class="flex-1 py-2 text-sm bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">🗑️ Purger</button>
+                                </div>
+                                <div id="rgpdPurgeResult" class="hidden p-3 rounded-lg border text-xs"></div>
+                                <button onclick="app.saveSettings()" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl transition shadow-lg">💾 Enregistrer</button>
+                            </div>
 
-                        <!-- Boutons purge manuelle + aperçu -->
-                        <div class="flex gap-2">
-                            <button onclick="app.loadRgpdStatus()"
-                                class="flex-1 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">
-                                🔄 Rafraîchir
-                            </button>
-                            <button onclick="app.previewRgpdPurge()"
-                                class="flex-1 py-2 text-sm bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">
-                                🔍 Aperçu
-                            </button>
-                            <button onclick="app.triggerRgpdPurge()"
-                                id="btnRgpdPurge"
-                                class="flex-1 py-2 text-sm bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-lg transition flex items-center justify-center gap-1">
-                                🗑️ Purger maintenant
-                            </button>
-                        </div>
+                            <!-- Sous-onglet Clients -->
+                            <div id="rtab-panel-clients" class="hidden p-4 space-y-4">
+                                <div>
+                                    <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2"><span>🛡️</span> Droit à l'effacement — RGPD Art. 17</h3>
+                                    <p class="text-xs text-gray-500">Anonymisez toutes les données personnelles d'un client. <strong>Les données fiscales restent intactes.</strong></p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">🔍 Rechercher un client</label>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="rgpdSearchInput" placeholder="Nom, email ou téléphone…"
+                                            class="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                            onkeydown="if(event.key==='Enter') app.searchRgpdCustomers()">
+                                        <button onclick="app.searchRgpdCustomers()" class="px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-semibold transition">🔍 Rechercher</button>
+                                    </div>
+                                    <div id="rgpdSearchError" class="hidden mt-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2"></div>
+                                </div>
+                                <div id="rgpdSearchResults" class="hidden bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
+                                    <div class="px-4 py-2 border-b border-gray-100 flex items-center justify-between bg-white">
+                                        <span class="text-sm font-semibold text-gray-700">Résultats</span>
+                                        <span id="rgpdResultsCount" class="text-xs text-gray-400"></span>
+                                    </div>
+                                    <div id="rgpdResultsList" class="divide-y divide-gray-100 max-h-72 overflow-y-auto bg-white"></div>
+                                </div>
+                                <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800">
+                                    <p class="font-semibold mb-2">ℹ️ Ce qui est anonymisé / conservé</p>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div class="space-y-1">
+                                            <p class="font-medium text-red-700">❌ Effacé</p>
+                                            <p>• Nom · Email · Téléphone</p>
+                                        </div>
+                                        <div class="space-y-1">
+                                            <p class="font-medium text-green-700">✅ Conservé</p>
+                                            <p>• Montants · Articles · TVA</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                        <!-- Résultat purge manuelle -->
-                        <div id="rgpdPurgeResult" class="hidden mt-3 p-3 rounded-lg border text-xs"></div>
+                            <!-- Sous-onglet Journal -->
+                            <div id="rtab-panel-journal" class="hidden p-4 space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="font-bold text-gray-800 flex items-center gap-2"><span>📋</span> Journal des purges RGPD</h3>
+                                    <button onclick="app.loadRgpdJournal()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg transition">🔄 Actualiser</button>
+                                </div>
+                                <div id="rgpdJournalList" class="space-y-2 max-h-[50vh] overflow-y-auto">
+                                    <p class="text-center text-gray-400 py-6 text-sm">Cliquez sur "Actualiser" pour charger le journal.</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Save Button -->
-                    <button onclick="app.saveSettings()" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl transition shadow-lg">
-                        💾 Enregistrer les paramètres
-                    </button>
-                </div>
+                    <!-- ══ ONGLET 6 — ⚙️ AVANCÉ ══ -->
+                    <div id="stab-panel-avance" class="settings-tab-panel hidden max-w-2xl mx-auto space-y-4">
+                        <div class="bg-white rounded-xl shadow-sm p-4" id="fiscalChainBlock">
+                            <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2"><span>🔐</span> Conformité fiscale NF525</h3>
+                            <p class="text-xs text-gray-500 mb-4">Chaînage HMAC-SHA256 des transactions (loi anti-fraude TVA). <strong>Requiert <code>FISCAL_HMAC_KEY</code> dans server/.env.</strong></p>
+                            <div class="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg mb-3">
+                                <div>
+                                    <p class="font-medium text-amber-800 text-sm">Activer le chaînage NF525</p>
+                                    <p class="text-xs text-amber-600">Les nouvelles transactions seront signées cryptographiquement</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="fiscalChainEnabled" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3">
+                                <div>
+                                    <p class="font-medium text-gray-700 text-sm">🕕 Début journée fiscale</p>
+                                    <p class="text-xs text-gray-500">Heure de début (la journée se termine 24h après)</p>
+                                </div>
+                                <select id="fiscalDayStartHour" class="border border-gray-200 rounded-lg px-2 py-1 text-sm">
+                                    <option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option>
+                                    <option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option>
+                                    <option value="6" selected>06:00 (défaut)</option><option value="7">07:00</option>
+                                    <option value="8">08:00</option><option value="9">09:00</option>
+                                </select>
+                            </div>
+                            <div id="fiscalChainStatus" class="hidden p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600 mb-3 space-y-1">
+                                <div class="flex items-center gap-2">
+                                    <span id="fiscalChainStatusDot" class="w-2 h-2 rounded-full bg-gray-400 inline-block"></span>
+                                    <span id="fiscalChainStatusText">Chargement…</span>
+                                </div>
+                                <div id="fiscalChainDetails" class="text-gray-400 pl-4"></div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="app.verifyFiscalChain()" id="btnVerifyChain"
+                                    class="flex-1 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition flex items-center justify-center gap-2">
+                                    🔍 Vérifier l'intégrité de la chaîne
+                                </button>
+                                <button onclick="app.loadFiscalStatus()" class="py-2 px-3 text-sm bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-lg transition" title="Rafraîchir">🔄</button>
+                            </div>
+                            <div id="fiscalVerifyResult" class="hidden mt-3 p-3 rounded-lg border text-xs"></div>
+                            <div id="fiscalResetBlock" class="hidden mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                <p class="text-xs text-orange-800 mb-2"><strong>⚠️ Changement de clé HMAC détecté ?</strong><br>Recalculez la chaîne avec la nouvelle clé.</p>
+                                <button onclick="app.resetFiscalChain()" id="btnResetChain"
+                                    class="w-full py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2">
+                                    🔄 Recalculer toute la chaîne avec la clé actuelle
+                                </button>
+                            </div>
+                        </div>
+                        <button onclick="app.saveSettings()" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl transition shadow-lg">💾 Enregistrer</button>
+                    </div>
+
+                </div><!-- fin overflow-y-auto -->
             </section>
 
             <!-- ============ ADMIN LICENCES SECTION ============ -->

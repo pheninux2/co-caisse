@@ -91,7 +91,10 @@ router.get('/preview', async (req, res) => {
       const ordersRow = await db.get(
         `SELECT COUNT(*) AS cnt FROM \`orders\`
          WHERE created_at < ?
-           AND (customer_name IS NOT NULL OR customer_phone IS NOT NULL)`,
+           AND (
+             (customer_name  IS NOT NULL AND customer_name  != 'Client anonymisé')
+             OR customer_phone IS NOT NULL
+           )`,
         [cutoffStr]
       );
       ordersCount = ordersRow?.cnt ?? 0;

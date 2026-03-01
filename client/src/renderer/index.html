@@ -905,6 +905,55 @@ SMTP_FROM="Co-Caisse" &lt;noreply@exemple.fr&gt;</pre>
 
                     <!-- ══ ONGLET 6 — ⚙️ AVANCÉ ══ -->
                     <div id="stab-panel-avance" class="settings-tab-panel hidden max-w-2xl mx-auto space-y-4">
+
+                        <!-- 🌍 Pays & établissement -->
+                        <div class="bg-white rounded-xl shadow-sm p-4">
+                            <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2"><span>🌍</span> Pays &amp; type d'établissement</h3>
+                            <p class="text-xs text-gray-500 mb-4">Choisissez votre pays pour appliquer automatiquement les taux TVA, la devise et les règles fiscales. Cliquez sur "Appliquer" pour recharger la config dans toute l'application.</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">🌍 Pays</label>
+                                    <select id="businessCountry" onchange="app.onCountryChange()"
+                                        class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                        <option value="FR">🇫🇷 France (EUR)</option>
+                                        <option value="MA">🇲🇦 Maroc (MAD)</option>
+                                        <option value="BE">🇧🇪 Belgique (EUR)</option>
+                                        <option value="CH">🇨🇭 Suisse (CHF)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-600 mb-1 block">🏪 Type d'établissement</label>
+                                    <select id="businessType"
+                                        class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                        <option value="restaurant">🍽️ Restaurant</option>
+                                        <option value="pizzeria">🍕 Pizzeria</option>
+                                        <option value="bar">🍺 Bar / Café</option>
+                                        <option value="bakery">🥐 Boulangerie</option>
+                                        <option value="fastfood">🍔 Fast-food</option>
+                                        <option value="retail">🛍️ Commerce de détail</option>
+                                        <option value="other">📦 Autre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <!-- Aperçu du préréglage -->
+                            <div id="businessConfigPreview" class="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs space-y-2 mb-4">
+                                <p class="font-semibold text-gray-700 mb-1">📊 Préréglage actif</p>
+                                <div class="grid grid-cols-2 gap-2 text-gray-600">
+                                    <div>💶 Devise : <strong id="previewCurrency">EUR (€)</strong></div>
+                                    <div>📊 TVA défaut : <strong id="previewDefaultVat">20%</strong></div>
+                                    <div class="col-span-2">🏷️ Taux disponibles : <strong id="previewVatRates">5.5% · 10% · 20%</strong></div>
+                                    <div>🖨️ Impression auto : <strong id="previewPrintDefault">Non (AGEC)</strong></div>
+                                    <div>🔐 Anti-fraude : <strong id="previewAntifraud">Oui (NF525)</strong></div>
+                                </div>
+                            </div>
+                            <button onclick="app.saveBusinessConfig()"
+                                class="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-lg text-sm transition">
+                                💾 Appliquer la configuration pays
+                            </button>
+                            <div id="businessConfigResult" class="hidden mt-2 p-2 rounded-lg text-xs text-center"></div>
+                        </div>
+
+                        <!-- 🔐 NF525 -->
                         <div class="bg-white rounded-xl shadow-sm p-4" id="fiscalChainBlock">
                             <h3 class="font-bold text-gray-800 mb-1 flex items-center gap-2"><span>🔐</span> Conformité fiscale NF525</h3>
                             <p class="text-xs text-gray-500 mb-4">Chaînage HMAC-SHA256 des transactions (loi anti-fraude TVA). <strong>Requiert <code>FISCAL_HMAC_KEY</code> dans server/.env.</strong></p>

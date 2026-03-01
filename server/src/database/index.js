@@ -224,6 +224,29 @@ class Database {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
 
+      // ── business_config ────────────────────────
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS \`business_config\` (
+          \`config_key\`   VARCHAR(60)  NOT NULL,
+          \`config_value\` TEXT,
+          \`updated_at\`   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (\`config_key\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      // Valeurs par défaut (ignorées si clé déjà présente)
+      await conn.query(`
+        INSERT IGNORE INTO \`business_config\` (\`config_key\`, \`config_value\`) VALUES
+          ('country',          'FR'),
+          ('business_type',    'restaurant'),
+          ('vat_rates',        '5.5,10,20'),
+          ('default_vat_rate', '20'),
+          ('currency',         'EUR'),
+          ('currency_symbol',  '€'),
+          ('print_by_default', '0'),
+          ('antifraud_mode',   '1'),
+          ('closure_required', '1');
+      `);
+
       // NOTE : les tables licences / licence_events sont créées via la migration
       // 001_licences.sql (appliquée automatiquement ci-dessous).
       // La DB admin (cocaisse_admin) conserve l'historique complet.

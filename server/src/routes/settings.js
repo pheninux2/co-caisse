@@ -28,7 +28,8 @@ router.get('/', async (req, res) => {
         alert_kitchen_minutes: 20,
         alert_ready_minutes: 5,
         alert_served_minutes: 30,
-        alert_remind_after_dismiss: 10
+        alert_remind_after_dismiss: 10,
+        country: 'FR',
       });
     }
 
@@ -66,6 +67,8 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
       // RGPD — durée de conservation
       rgpd_retention_months = 120,
       rgpd_logs_retention_months = 12,
+      // Pays / configuration établissement
+      country = 'FR',
     } = req.body;
 
     // Vérifier si des settings existent déjà
@@ -97,6 +100,7 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           agec_enabled = ?,
           rgpd_retention_months = ?,
           rgpd_logs_retention_months = ?,
+          country = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?`,
         [
@@ -108,6 +112,7 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           fiscal_chain_enabled, fiscal_day_start_hour, agec_enabled,
           Math.max(parseInt(rgpd_retention_months) || 1, 1),
           Math.max(parseInt(rgpd_logs_retention_months) || 1, 1),
+          country,
           existing.id,
         ]
       );
@@ -122,8 +127,8 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           alert_draft_minutes, alert_validated_minutes, alert_kitchen_minutes,
           alert_ready_minutes, alert_served_minutes, alert_remind_after_dismiss,
           fiscal_chain_enabled, fiscal_day_start_hour, agec_enabled,
-          rgpd_retention_months, rgpd_logs_retention_months
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          rgpd_retention_months, rgpd_logs_retention_months, country
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           uuidv4(), company_name, company_address, company_phone, company_email, tax_number,
           currency, default_tax_rate, receipt_header, receipt_footer,
@@ -133,6 +138,7 @@ router.post('/', roleCheck(['admin']), async (req, res) => {
           fiscal_chain_enabled, fiscal_day_start_hour, agec_enabled,
           Math.max(parseInt(rgpd_retention_months) || 1, 1),
           Math.max(parseInt(rgpd_logs_retention_months) || 1, 1),
+          country,
         ]
       );
     }

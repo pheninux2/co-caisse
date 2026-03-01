@@ -1847,6 +1847,95 @@ class CocaisseApp {
   }
 
 
+  // ===== BUSINESS CONFIG =====
+
+  /**
+   * Préréglages pays côté client (miroir de COUNTRY_PRESETS serveur).
+   * Utilisés pour l'aperçu immédiat sans appel API.
+   */
+  _countryPresets() {
+    return {
+      FR: { currency: 'EUR', currencySymbol: '€', vatRates: [5.5, 10, 20], defaultVatRate: 20, printByDefault: false, antifraudMode: true },
+      MA: { currency: 'MAD', currencySymbol: 'د.م.', vatRates: [0, 7, 10, 14, 20], defaultVatRate: 10, printByDefault: true,  antifraudMode: false },
+      BE: { currency: 'EUR', currencySymbol: '€', vatRates: [6, 12, 21],       defaultVatRate: 21, printByDefault: false, antifraudMode: false },
+      CH: { currency: 'CHF', currencySymbol: 'CHF', vatRates: [2.6, 3.8, 8.1], defaultVatRate: 8.1, printByDefault: false, antifraudMode: false },
+    };
+  }
+
+  /** Remplit les selects pays/type depuis this.businessConfig. */
+  _populateBusinessConfigUI() {
+    const cfg = this.businessConfig;
+    if (!cfg) return;
+
+    const countryEl = document.getElementById('businessCountry');
+    if (countryEl) countryEl.value = cfg.country || 'FR';
+
+    const typeEl = document.getElementById('businessType');
+    if (typeEl) typeEl.value = cfg.businessType || 'restaurant';
+
+    this._updateBusinessPreview(cfg.country || 'FR');
+  }
+
+  /** Met à jour l'aperçu préréglage en temps réel (sans appel API). */
+  onCountryChange() {
+    const country = document.getElementById('businessCountry')?.value || 'FR';
+    this._updateBusinessPreview(country);
+  }
+
+  _updateBusinessPreview(country) {
+    const presets = this._countryPresets();
+    const p = presets[country] || presets['FR'];
+
+    const el = (id) => document.getElementById(id);
+    if (el('previewCurrency'))    el('previewCurrency').textContent    = `${p.currency} (${p.currencySymbol})`;
+    if (el('previewDefaultVat'))  el('previewDefaultVat').textContent  = `${p.defaultVatRate}%`;
+    if (el('previewVatRates'))    el('previewVatRates').textContent    = p.vatRates.map(r => r + '%').join(' · ');
+    if (el('previewPrintDefault')) el('previewPrintDefault').textContent = p.printByDefault ? 'Oui' : 'Non (AGEC)';
+    if (el('previewAntifraud'))   el('previewAntifraud').textContent   = p.antifraudMode  ? 'Oui (NF525)' : 'Non';
+  }
+
+  /** Sauvegarde la config pays/type via PUT /api/config/business. */
+  async saveBusinessConfig() {
+    const resultEl = document.getElementById('businessConfigResult');
+    const country     = document.getElementById('businessCountry')?.value  || 'FR';
+    const businessType = document.getElementById('businessType')?.value    || 'restaurant';
+    const presets     = this._countryPresets();
+    const preset      = presets[country] || presets['FR'];
+
+    try {
+      if (resultEl) { resultEl.className = 'mt-2 p-2 rounded-lg text-xs text-center bg-gray-50 text-gray-500'; resultEl.textContent = '⏳ Enregistrement…'; resultEl.classList.remove('hidden'); }
+
+      const res  = await this.apiFetch(`${API_URL}/config/business`, {
+        method:  'PUT',
+        headers: this.getAuthHeaders(),
+        body:    JSON.stringify({
+          country,
+          business_type:    businessType,
+          vat_rates:        preset.vatRates,
+          default_vat_rate: preset.defaultVatRate,
+          currency:         preset.currency,
+          currency_symbol:  preset.currencySymbol,
+          print_by_default: preset.printByDefault,
+          antifraud_mode:   preset.antifraudMode,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+      // Mettre à jour businessConfig en mémoire
+      this.businessConfig = data.config;
+
+      if (resultEl) { resultEl.className = 'mt-2 p-2 rounded-lg text-xs text-center bg-green-50 text-green-700'; resultEl.textContent = '✅ Configuration appliquée — taux TVA et devise mis à jour.'; }
+      this.toastSuccess(`🌍 Config ${country} appliquée — TVA : ${preset.vatRates.join('%, ')}%`);
+
+      // Rafraîchir les produits (taux TVA dans les cards)
+      await this.loadProducts();
+    } catch (e) {
+      if (resultEl) { resultEl.className = 'mt-2 p-2 rounded-lg text-xs text-center bg-red-50 text-red-700'; resultEl.textContent = '❌ ' + e.message; }
+      this.toastError('Erreur : ' + e.message);
+    }
+  }
+
   // ===== SETTINGS TABS =====
 
   showSettingsTab(tab) {
@@ -1865,7 +1954,10 @@ class CocaisseApp {
     document.getElementById(`stab-panel-${tab}`)?.classList.remove('hidden');
     // Chargements spécifiques
     if (tab === 'rgpd') this.loadRgpdStatus();
-    if (tab === 'avance') this.loadFiscalStatus();
+    if (tab === 'avance') {
+      this.loadFiscalStatus();
+      this._populateBusinessConfigUI();
+    }
     this._activeSettingsTab = tab;
   }
 

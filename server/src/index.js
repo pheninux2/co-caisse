@@ -27,6 +27,8 @@ import fiscalRoutes      from './routes/fiscal.js'; // NF525 anti-fraude TVA
 import configRoutes      from './routes/config.js'; // Configuration établissement
 import receiptRoutes     from './routes/receipts.js'; // Tickets dématérialisés AGEC
 import rgpdRoutes        from './routes/rgpd.js'; // RGPD purge & conservation
+import setupRoutes       from './routes/setup.js'; // Wizard premier démarrage
+import tableRoutes       from './routes/tables.js'; // Plan de salle visuel
 import { startPurgeJob } from './jobs/purgeJob.js'; // Cron RGPD 03h00
 
 const app  = express();
@@ -71,6 +73,7 @@ await db.initialize();
 app.locals.db = db;
 
 // ── Routes PUBLIQUES (sans JWT, sans contrôle licence) ───────────────────────
+app.use('/api/setup',    setupRoutes);          // Wizard premier démarrage (AVANT tout)
 app.use('/api/licences', licenceRoutes);
 app.use('/api/users',    userRoutes);
 app.use('/api/config',   configRoutes);    // Config établissement (vatRates, pays…)
@@ -85,6 +88,7 @@ app.use('/api/products',     authMiddleware, productRoutes);
 app.use('/api/categories',   authMiddleware, categoryRoutes);
 app.use('/api/transactions', authMiddleware, transactionRoutes);
 app.use('/api/orders',       authMiddleware, orderRoutes);
+app.use('/api/tables',       authMiddleware, tableRoutes);   // Plan de salle
 app.use('/api/reports',      authMiddleware, reportRoutes);
 app.use('/api/settings',     authMiddleware, settingsRoutes);
 app.use('/api/admin',        adminRoutes);   // auth + roleCheck admin dans le router

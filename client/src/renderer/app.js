@@ -25,6 +25,11 @@ class CocaisseApp {
     this.heldCarts = [];
     this.orders = [];
     this.currentOrderFilter = 'all';
+    this.floorPlan = null;
+    this.floorPlanTables = [];
+    this.floorPlanEditMode = false;
+    this.floorPlanPollingInterval = null;
+    this._dragState = null;
     this.alerts = [];
     this.alertsRaw = [];
     this.alertPollingInterval = null;
@@ -90,6 +95,18 @@ class CocaisseApp {
     const savedSettings = localStorage.getItem('cocaisse_settings');
     if (savedSettings) {
       this.settings = JSON.parse(savedSettings);
+    }
+
+    // ── 0. Vérification premier démarrage (wizard) ───────────────────────
+    try {
+      const setupRes  = await fetch(`${API_URL}/setup/status`);
+      const setupData = await setupRes.json();
+      if (!setupData.completed) {
+        this._showSetupWizard();
+        return; // stoppe init() — le wizard appellera init() à la fin
+      }
+    } catch (_) {
+      // Si le serveur est inaccessible, on continue normalement
     }
 
     // ── 1. Vérification licence AVANT tout ──────────────────────────────
@@ -1847,6 +1864,634 @@ class CocaisseApp {
   }
 
 
+  // ===== PLAN DE SALLE =====
+
+  /** Charge le layout + statuts et rend le canvas. */
+  async loadFloorPlan() {
+    try {
+      const [layoutRes, statusRes] = await Promise.all([
+        this.apiFetch(`${API_URL}/tables/layout`),
+        this.apiFetch(`${API_URL}/tables/status`),
+      ]);
+      const layout = await layoutRes.json();
+      const statuses = await statusRes.json();
+
+      this.floorPlan        = layout.floor_plan;
+      this.floorPlanTables  = layout.tables || [];
+
+      // Fusionner les statuts dans les tables
+      const statusMap = {};
+      (statuses || []).forEach(s => { statusMap[s.id] = s; });
+      this.floorPlanTables = this.floorPlanTables.map(t => ({
+        ...t, ...(statusMap[t.id] || {}),
+      }));
+
+      this._renderFloorPlan();
+      this._showFloorEditToolbar();
+      this.startFloorPlanPolling();
+    } catch (e) {
+      console.error('[FloorPlan] Erreur chargement:', e.message);
+    }
+  }
+
+  /** Rend toutes les tables dans le canvas. */
+  _renderFloorPlan() {
+    const canvas = document.getElementById('floorPlanCanvas');
+    if (!canvas || !this.floorPlan) return;
+
+    // Dimensions
+    canvas.style.width  = (this.floorPlan.width  || 1100) + 'px';
+    canvas.style.height = (this.floorPlan.height || 650)  + 'px';
+    canvas.style.backgroundColor = this.floorPlan.background_color || '#f3f4f6';
+
+    // Supprimer les tables existantes (pas l'indicateur vide)
+    canvas.querySelectorAll('.floor-table').forEach(el => el.remove());
+
+    const empty = document.getElementById('floorPlanEmpty');
+    if (empty) empty.style.display = this.floorPlanTables.length === 0 ? '' : 'none';
+
+    this.floorPlanTables.forEach(table => {
+      const el = this._createTableEl(table);
+      canvas.appendChild(el);
+      if (this.floorPlanEditMode) this._attachDragListeners(el, table.id);
+    });
+  }
+
+  /** Crée l'élément DOM d'une table. */
+  _createTableEl(table) {
+    const statusColors = {
+      free:       'bg-green-400  border-green-500  text-green-900',
+      draft:      'bg-yellow-300 border-yellow-400 text-yellow-900',
+      in_kitchen: 'bg-red-400    border-red-500    text-red-900',
+      ready:      'bg-orange-400 border-orange-500 text-orange-900',
+      served:     'bg-blue-400   border-blue-500   text-blue-900',
+    };
+    const statusIcons = { free: '', draft: '📋', in_kitchen: '🍳', ready: '🔔', served: '🍽️' };
+    const status  = table.computed_status || 'free';
+    const colors  = statusColors[status] || statusColors.free;
+    const isCircle = table.shape === 'circle';
+
+    const el = document.createElement('div');
+    el.className = `floor-table absolute border-2 flex flex-col items-center justify-center cursor-pointer transition-shadow hover:shadow-lg ${colors} ${isCircle ? 'rounded-full' : 'rounded-xl'}`;
+    el.id        = `floor-table-${table.id}`;
+    el.dataset.tableId = table.id;
+    el.style.cssText = `left:${table.x}px;top:${table.y}px;width:${table.width}px;height:${table.height}px;`;
+
+    const elapsed = table.elapsed_minutes != null ? `<span class="text-xs opacity-70">${table.elapsed_minutes}min</span>` : '';
+    const icon    = statusIcons[status] || '';
+
+    el.innerHTML = `
+      <span class="font-bold text-sm leading-tight text-center px-1">${this._esc(table.label)}</span>
+      <span class="text-xs opacity-60">👥${table.capacity}</span>
+      ${icon ? `<span class="text-xs">${icon}</span>` : ''}
+      ${elapsed}
+      ${table.order_number ? `<span class="text-xs font-mono opacity-70">${table.order_number.slice(-4)}</span>` : ''}
+    `;
+
+    el.addEventListener('click', () => {
+      if (this.floorPlanEditMode) return; // en mode édition, pas d'ouverture commande
+      this.handleTableClick(table.id);
+    });
+
+    return el;
+  }
+
+  /** Gère le clic sur une table en mode opérationnel. */
+  handleTableClick(tableId) {
+    const table = this.floorPlanTables.find(t => t.id === tableId);
+    if (!table) return;
+
+    const detailEl  = document.getElementById('floorTableDetail');
+    const titleEl   = document.getElementById('floorDetailTitle');
+    const contentEl = document.getElementById('floorDetailContent');
+    if (!detailEl || !contentEl) return;
+
+    titleEl.textContent = `Table ${table.label} — ${table.capacity} pers.`;
+
+    if (table.computed_status === 'free' || !table.order_id) {
+      contentEl.innerHTML = `
+        <div class="text-center py-4">
+          <span class="text-4xl">🟢</span>
+          <p class="font-semibold text-gray-700 mt-2">Table libre</p>
+          <p class="text-sm text-gray-400 mb-4">Capacité : ${table.capacity} personnes</p>
+          <button onclick="app.openNewOrderForTable('${this._esc(table.label)}')"
+            class="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-xl text-sm transition">
+            + Nouvelle commande
+          </button>
+        </div>`;
+    } else {
+      const statusLabels = { draft: '📋 En attente', in_kitchen: '🍳 En cuisine', ready: '🔔 Prête', served: '🍽️ Servie' };
+      const statusLabel  = statusLabels[table.computed_status] || table.order_status;
+      const elapsed      = table.elapsed_minutes != null ? `${table.elapsed_minutes} min` : '—';
+      contentEl.innerHTML = `
+        <div class="space-y-3">
+          <div class="p-3 bg-gray-50 rounded-xl space-y-1 text-sm">
+            <p><span class="text-gray-500">Commande :</span> <strong>${table.order_number || '—'}</strong></p>
+            <p><span class="text-gray-500">Statut :</span> <strong>${statusLabel}</strong></p>
+            <p><span class="text-gray-500">Durée :</span> <strong>${elapsed}</strong></p>
+            <p><span class="text-gray-500">Total :</span> <strong>${table.order_total ? table.order_total.toFixed(2) + ' €' : '—'}</strong></p>
+          </div>
+          <button onclick="app.viewOrder('${table.order_id}')"
+            class="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-xl text-sm transition">
+            📋 Ouvrir la commande
+          </button>
+          ${this.currentUser?.role === 'admin' ? `
+          <button onclick="app.openTableForm('${table.id}')"
+            class="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition">
+            ✏️ Modifier la table
+          </button>` : ''}
+        </div>`;
+    }
+
+    detailEl.classList.remove('hidden');
+  }
+
+  closeFloorTableDetail() {
+    document.getElementById('floorTableDetail')?.classList.add('hidden');
+  }
+
+  /** Ouvre le modal de commande pré-rempli avec le numéro de table. */
+  openNewOrderForTable(tableLabel) {
+    this.closeFloorTableDetail();
+    // Naviguer vers la section commandes et pré-remplir la table
+    this.showSection('orders');
+    setTimeout(() => {
+      const tableInput = document.getElementById('orderTableNumber');
+      if (tableInput) {
+        tableInput.value = tableLabel;
+        // Déclencher l'ouverture du formulaire de nouvelle commande si la méthode existe
+        if (typeof this.openNewOrderModal === 'function') this.openNewOrderModal();
+        else if (typeof this.openOrderDialog === 'function') this.openOrderDialog();
+      }
+    }, 150);
+  }
+
+  /** Affiche ou cache la barre d'outils admin. */
+  _showFloorEditToolbar() {
+    const toolbar = document.getElementById('floorEditToolbar');
+    if (!toolbar) return;
+    if (this.currentUser?.role === 'admin') {
+      toolbar.classList.remove('hidden');
+      toolbar.classList.add('flex');
+    } else {
+      toolbar.classList.add('hidden');
+    }
+  }
+
+  /** Active / désactive le mode édition drag-and-drop. */
+  toggleFloorPlanEditMode() {
+    this.floorPlanEditMode = document.getElementById('floorEditModeToggle')?.checked || false;
+    // Re-rendre pour attacher/détacher les listeners drag
+    this._renderFloorPlan();
+    // Curseur du canvas
+    const canvas = document.getElementById('floorPlanCanvas');
+    if (canvas) canvas.style.cursor = this.floorPlanEditMode ? 'default' : '';
+  }
+
+  /** Attache les événements pointer drag sur une table. */
+  _attachDragListeners(el, tableId) {
+    el.style.cursor = 'grab';
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const canvas  = document.getElementById('floorPlanCanvas');
+      const rect    = canvas.getBoundingClientRect();
+      const elRect  = el.getBoundingClientRect();
+      this._dragState = {
+        tableId,
+        el,
+        offsetX: e.clientX - elRect.left,
+        offsetY: e.clientY - elRect.top,
+        canvasRect: rect,
+      };
+      el.setPointerCapture(e.pointerId);
+      el.style.cursor = 'grabbing';
+      el.style.zIndex = 10;
+    });
+
+    el.addEventListener('pointermove', (e) => {
+      if (!this._dragState || this._dragState.tableId !== tableId) return;
+      const { offsetX, offsetY, canvasRect } = this._dragState;
+      const canvasW = this.floorPlan?.width  || 1100;
+      const canvasH = this.floorPlan?.height || 650;
+      let newX = e.clientX - canvasRect.left - offsetX;
+      let newY = e.clientY - canvasRect.top  - offsetY;
+      // Clamp dans les bords
+      newX = Math.max(0, Math.min(newX, canvasW - el.offsetWidth));
+      newY = Math.max(0, Math.min(newY, canvasH - el.offsetHeight));
+      el.style.left = newX + 'px';
+      el.style.top  = newY + 'px';
+    });
+
+    el.addEventListener('pointerup', async (e) => {
+      if (!this._dragState || this._dragState.tableId !== tableId) return;
+      el.style.cursor = 'grab';
+      el.style.zIndex = '';
+      const newX = parseInt(el.style.left);
+      const newY = parseInt(el.style.top);
+      this._dragState = null;
+
+      // Sauvegarder la nouvelle position
+      try {
+        await this.apiFetch(`${API_URL}/tables/${tableId}`, {
+          method: 'PUT',
+          body:   JSON.stringify({ x: newX, y: newY }),
+        });
+        // Mettre à jour le tableau en mémoire
+        const t = this.floorPlanTables.find(t => t.id === tableId);
+        if (t) { t.x = newX; t.y = newY; }
+      } catch (err) {
+        this.toastError('Erreur sauvegarde position: ' + err.message);
+      }
+    });
+  }
+
+  /** Démarre le polling des statuts (toutes les 15 sec). */
+  startFloorPlanPolling() {
+    this.stopFloorPlanPolling();
+    this.floorPlanPollingInterval = setInterval(() => this._refreshTableStatuses(), 15000);
+  }
+
+  stopFloorPlanPolling() {
+    if (this.floorPlanPollingInterval) {
+      clearInterval(this.floorPlanPollingInterval);
+      this.floorPlanPollingInterval = null;
+    }
+  }
+
+  /** Rafraîchit uniquement les statuts (pas le layout). */
+  async _refreshTableStatuses() {
+    if (this.currentSection !== 'floorplan') return;
+    try {
+      const res      = await this.apiFetch(`${API_URL}/tables/status`);
+      const statuses = await res.json();
+      const statusMap = {};
+      statuses.forEach(s => { statusMap[s.id] = s; });
+
+      // Mise à jour CSS sans re-render complet
+      this.floorPlanTables.forEach(table => {
+        const updated = statusMap[table.id];
+        if (!updated) return;
+        const prev = table.computed_status;
+        Object.assign(table, updated);
+        if (prev !== updated.computed_status) {
+          // Recréer seulement la table qui a changé de statut
+          const oldEl = document.getElementById(`floor-table-${table.id}`);
+          if (oldEl) {
+            const newEl = this._createTableEl(table);
+            if (this.floorPlanEditMode) this._attachDragListeners(newEl, table.id);
+            oldEl.replaceWith(newEl);
+          }
+        } else {
+          // Mettre à jour juste le temps écoulé
+          const el = document.getElementById(`floor-table-${table.id}`);
+          if (el && table.elapsed_minutes != null) {
+            const spans = el.querySelectorAll('span');
+            spans.forEach(s => {
+              if (s.textContent.endsWith('min')) s.textContent = `${table.elapsed_minutes}min`;
+            });
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  /** Ouvre le modal de création/modification d'une table. */
+  openTableForm(tableId = null) {
+    const titleEl = document.getElementById('tableFormTitle');
+    const idEl    = document.getElementById('tableFormId');
+    const labelEl = document.getElementById('tableFormLabel');
+    const shapeEl = document.getElementById('tableFormShape');
+    const capEl   = document.getElementById('tableFormCapacity');
+    const errEl   = document.getElementById('tableFormError');
+
+    if (errEl) errEl.classList.add('hidden');
+
+    if (tableId) {
+      const table = this.floorPlanTables.find(t => t.id === tableId);
+      if (!table) return;
+      if (titleEl) titleEl.textContent = `Modifier — Table ${table.label}`;
+      if (idEl)    idEl.value          = table.id;
+      if (labelEl) labelEl.value       = table.label;
+      if (shapeEl) shapeEl.value       = table.shape;
+      if (capEl)   capEl.value         = table.capacity;
+    } else {
+      if (titleEl) titleEl.textContent = 'Nouvelle table';
+      if (idEl)    idEl.value    = '';
+      if (labelEl) labelEl.value = '';
+      if (shapeEl) shapeEl.value = 'rect';
+      if (capEl)   capEl.value   = 4;
+    }
+
+    this.openModal('tableFormModal');
+  }
+
+  /** Sauvegarde une table (POST ou PUT). */
+  async saveTable() {
+    const id       = document.getElementById('tableFormId')?.value;
+    const label    = document.getElementById('tableFormLabel')?.value?.trim();
+    const shape    = document.getElementById('tableFormShape')?.value || 'rect';
+    const capacity = parseInt(document.getElementById('tableFormCapacity')?.value) || 4;
+    const errEl    = document.getElementById('tableFormError');
+
+    if (errEl) errEl.classList.add('hidden');
+    if (!label) {
+      if (errEl) { errEl.textContent = 'Le label est obligatoire.'; errEl.classList.remove('hidden'); }
+      return;
+    }
+
+    try {
+      const canvas  = document.getElementById('floorPlanCanvas');
+      const canvasW = canvas?.offsetWidth  || 1100;
+      const canvasH = canvas?.offsetHeight || 650;
+
+      const body = { label, shape, capacity };
+      if (!id) {
+        // Placer la nouvelle table au centre
+        body.x = Math.floor(canvasW / 2 - 40);
+        body.y = Math.floor(canvasH / 2 - 40);
+        body.width  = shape === 'circle' ? 80 : 90;
+        body.height = shape === 'circle' ? 80 : 70;
+      }
+
+      const url = id ? `${API_URL}/tables/${id}` : `${API_URL}/tables`;
+      const res = await this.apiFetch(url, {
+        method: id ? 'PUT' : 'POST',
+        body:   JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+      this.closeModal('tableFormModal');
+      this.toastSuccess(id ? `Table "${label}" modifiée` : `Table "${label}" créée`);
+      await this.loadFloorPlan();
+    } catch (e) {
+      if (errEl) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+    }
+  }
+
+  /** Supprime (soft delete) une table. */
+  async deleteTable(tableId) {
+    const table = this.floorPlanTables.find(t => t.id === tableId);
+    if (!table) return;
+    if (!confirm(`Supprimer la table "${table.label}" ? Cette action est irréversible.`)) return;
+    try {
+      const res  = await this.apiFetch(`${API_URL}/tables/${tableId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur');
+      this.toastSuccess(data.message || 'Table supprimée');
+      this.closeFloorTableDetail();
+      await this.loadFloorPlan();
+    } catch (e) {
+      this.toastError(e.message);
+    }
+  }
+
+  // ===== SETUP WIZARD =====
+
+  /** Données temporaires du wizard (en mémoire, jamais envoyées partiellement). */
+  _wizardData = { country: null, businessType: null, step: 1 };
+
+  /** Affiche l'écran wizard et cache tout le reste. */
+  _showSetupWizard() {
+    document.getElementById('setupWizard')?.classList.remove('hidden');
+    document.getElementById('licenceScreen')?.classList.add('hidden');
+    document.getElementById('loginScreen')?.classList.add('hidden');
+    document.getElementById('app')?.classList.add('hidden');
+    this._wizardGoTo(1);
+  }
+
+  /** Navigue vers une étape du wizard. */
+  _wizardGoTo(step) {
+    this._wizardData.step = step;
+
+    // Mettre à jour progression
+    const label = document.getElementById('wizardStepLabel');
+    if (label) label.textContent = `Étape ${step} / 4`;
+
+    for (let i = 1; i <= 4; i++) {
+      const dot = document.getElementById(`wizardDot${i}`);
+      if (dot) dot.className = `h-2 flex-1 rounded-full transition-all ${i <= step ? 'bg-white' : 'bg-white/30'}`;
+    }
+
+    // Afficher/cacher les étapes
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById(`wizardStep${i}`)?.classList.toggle('hidden', i !== step);
+    }
+
+    // Boutons navigation
+    const btnPrev   = document.getElementById('wizardBtnPrev');
+    const btnNext   = document.getElementById('wizardBtnNext');
+    const btnFinish = document.getElementById('wizardBtnFinish');
+
+    if (btnPrev)   btnPrev.classList.toggle('hidden', step === 1);
+    if (btnNext)   btnNext.style.display   = step < 4 ? '' : 'none';
+    if (btnFinish) btnFinish.style.display = step === 4 ? '' : 'none';
+
+    // Cacher les erreurs
+    const errEl = document.getElementById('wizardError');
+    if (errEl) errEl.classList.add('hidden');
+
+    // Étape 3 : adapter label SIRET/ICE selon pays
+    if (step === 3) {
+      const lbl = document.getElementById('wizardTaxNumberLabel');
+      if (lbl) {
+        if      (this._wizardData.country === 'MA')  lbl.textContent = 'ICE (15 chiffres)';
+        else if (this._wizardData.country === 'FR')  lbl.textContent = 'SIRET (14 chiffres)';
+        else                                         lbl.textContent = 'N° Identification';
+      }
+    }
+  }
+
+  /** Sélectionne un pays (étape 1). */
+  _wizardSelectCountry(code) {
+    this._wizardData.country = code;
+    // Mettre à jour visuellement les boutons
+    document.querySelectorAll('.wizard-country-btn').forEach(btn => {
+      btn.classList.remove('border-indigo-500', 'bg-indigo-50');
+      btn.classList.add('border-gray-200');
+    });
+    const btn = document.getElementById(`wizardCountry_${code}`);
+    if (btn) { btn.classList.add('border-indigo-500', 'bg-indigo-50'); btn.classList.remove('border-gray-200'); }
+  }
+
+  /** Sélectionne un type d'établissement (étape 2). */
+  _wizardSelectType(type) {
+    this._wizardData.businessType = type;
+    document.querySelectorAll('.wizard-type-btn').forEach(btn => {
+      btn.classList.remove('border-indigo-500', 'bg-indigo-50');
+      btn.classList.add('border-gray-200');
+    });
+    const btn = document.getElementById(`wizardType_${type}`);
+    if (btn) { btn.classList.add('border-indigo-500', 'bg-indigo-50'); btn.classList.remove('border-gray-200'); }
+  }
+
+  /** Bouton Suivant → valide l'étape courante et avance. */
+  _wizardNext() {
+    const step  = this._wizardData.step;
+    const errEl = document.getElementById('wizardError');
+    if (errEl) errEl.classList.add('hidden');
+
+    if (step === 1) {
+      if (!this._wizardData.country) {
+        if (errEl) { errEl.textContent = 'Veuillez sélectionner un pays.'; errEl.classList.remove('hidden'); }
+        return;
+      }
+      this._wizardGoTo(2);
+    } else if (step === 2) {
+      if (!this._wizardData.businessType) {
+        if (errEl) { errEl.textContent = 'Veuillez sélectionner un type d\'établissement.'; errEl.classList.remove('hidden'); }
+        return;
+      }
+      this._wizardGoTo(3);
+    } else if (step === 3) {
+      const name    = document.getElementById('wizardCompanyName')?.value?.trim();
+      const address = document.getElementById('wizardCompanyAddress')?.value?.trim();
+      if (!name || !address) {
+        if (errEl) { errEl.textContent = 'Le nom et l\'adresse sont obligatoires.'; errEl.classList.remove('hidden'); }
+        return;
+      }
+      // Valider SIRET/ICE si renseigné
+      const taxNum = document.getElementById('wizardTaxNumber')?.value?.replace(/\s/g, '') || '';
+      if (taxNum) {
+        if (this._wizardData.country === 'FR' && !/^\d{14}$/.test(taxNum)) {
+          if (errEl) { errEl.textContent = 'SIRET invalide — 14 chiffres requis.'; errEl.classList.remove('hidden'); }
+          return;
+        }
+        if (this._wizardData.country === 'MA' && !/^\d{15}$/.test(taxNum)) {
+          if (errEl) { errEl.textContent = 'ICE invalide — 15 chiffres requis.'; errEl.classList.remove('hidden'); }
+          return;
+        }
+      }
+      this._wizardGoTo(4);
+    }
+  }
+
+  /** Bouton Précédent. */
+  _wizardPrev() {
+    if (this._wizardData.step > 1) this._wizardGoTo(this._wizardData.step - 1);
+  }
+
+  /** Validation temps réel SIRET/ICE. */
+  _wizardValidateTaxNumber() {
+    const val    = document.getElementById('wizardTaxNumber')?.value?.replace(/\s/g, '') || '';
+    const errEl  = document.getElementById('wizardTaxNumberError');
+    if (!errEl || !val) { errEl?.classList.add('hidden'); return; }
+    let ok = true;
+    if (this._wizardData.country === 'FR' && val.length > 0) {
+      ok = /^\d{0,14}$/.test(val);
+      if (!ok || (val.length === 14 && !/^\d{14}$/.test(val))) {
+        errEl.textContent = 'SIRET : 14 chiffres'; errEl.classList.remove('hidden');
+      } else { errEl.classList.add('hidden'); }
+    } else if (this._wizardData.country === 'MA' && val.length > 0) {
+      if (val.length === 15 && /^\d{15}$/.test(val)) { errEl.classList.add('hidden'); }
+      else { errEl.textContent = 'ICE : 15 chiffres'; errEl.classList.remove('hidden'); }
+    } else { errEl.classList.add('hidden'); }
+  }
+
+  /** Validation temps réel mot de passe. */
+  _wizardValidatePassword() {
+    const pw      = document.getElementById('wizardAdminPassword')?.value || '';
+    const confirm = document.getElementById('wizardAdminPasswordConfirm')?.value || '';
+    const strengthDiv = document.getElementById('wizardPasswordStrength');
+    const hintEl      = document.getElementById('wizardPasswordHint');
+    const matchErr    = document.getElementById('wizardPasswordMatchError');
+
+    if (!pw) { strengthDiv?.classList.add('hidden'); return; }
+    strengthDiv?.classList.remove('hidden');
+
+    // Score : longueur, majuscule, chiffre, spécial
+    let score = 0;
+    if (pw.length >= 8)         score++;
+    if (/[A-Z]/.test(pw))       score++;
+    if (/\d/.test(pw))          score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+
+    const colors = ['bg-red-400', 'bg-orange-400', 'bg-yellow-400', 'bg-green-500'];
+    const labels = ['Très faible', 'Faible', 'Correct', 'Fort'];
+    for (let i = 1; i <= 4; i++) {
+      const bar = document.getElementById(`wizardPwBar${i}`);
+      if (bar) bar.className = `h-1.5 flex-1 rounded-full transition-all ${i <= score ? colors[score - 1] : 'bg-gray-200'}`;
+    }
+    if (hintEl) hintEl.textContent = labels[score - 1] || '';
+
+    // Vérif correspondance
+    if (confirm) {
+      if (matchErr) matchErr.classList.toggle('hidden', pw === confirm);
+    }
+  }
+
+  /** Soumet le wizard — POST /api/setup/complete. */
+  async _wizardFinish() {
+    const errEl  = document.getElementById('wizardError');
+    const btn    = document.getElementById('wizardBtnFinish');
+    if (errEl) errEl.classList.add('hidden');
+
+    // Validation étape 4
+    const username = document.getElementById('wizardAdminUsername')?.value?.trim();
+    const email    = document.getElementById('wizardAdminEmail')?.value?.trim();
+    const password = document.getElementById('wizardAdminPassword')?.value;
+    const confirm  = document.getElementById('wizardAdminPasswordConfirm')?.value;
+
+    if (!username) {
+      if (errEl) { errEl.textContent = 'Le nom d\'utilisateur est obligatoire.'; errEl.classList.remove('hidden'); }
+      return;
+    }
+    if (!password || !/^(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      if (errEl) { errEl.textContent = 'Mot de passe trop faible — 8 caractères min, 1 majuscule, 1 chiffre.'; errEl.classList.remove('hidden'); }
+      return;
+    }
+    if (password !== confirm) {
+      if (errEl) { errEl.textContent = 'Les mots de passe ne correspondent pas.'; errEl.classList.remove('hidden'); }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Configuration en cours…'; }
+
+    try {
+      const body = {
+        country:           this._wizardData.country === 'OTHER' ? 'FR' : this._wizardData.country,
+        business_type:     this._wizardData.businessType,
+        company_name:      document.getElementById('wizardCompanyName')?.value?.trim(),
+        company_address:   document.getElementById('wizardCompanyAddress')?.value?.trim(),
+        tax_number:        document.getElementById('wizardTaxNumber')?.value?.replace(/\s/g, '') || '',
+        vat_number:        document.getElementById('wizardVatNumber')?.value?.trim() || '',
+        company_phone:     document.getElementById('wizardCompanyPhone')?.value?.trim() || '',
+        company_email:     document.getElementById('wizardCompanyEmail')?.value?.trim() || '',
+        admin_username:    username,
+        admin_email:       email,
+        admin_password:    password,
+      };
+
+      const res  = await fetch(`${API_URL}/setup/complete`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Erreur lors de la configuration');
+
+      // Stocker le JWT auto-login
+      if (data.token) {
+        _jwtToken = data.token;
+        localStorage.setItem('jwt_token', data.token);
+        localStorage.setItem('currentUser', JSON.stringify(data.user));
+        this.currentUser = data.user;
+      }
+
+      // Cacher le wizard et reprendre l'init normale
+      document.getElementById('setupWizard')?.classList.add('hidden');
+      console.log('✅ [WIZARD] Setup complété — lancement de l\'app');
+
+      // Reprendre l'initialisation depuis l'étape licence
+      await this.init();
+
+    } catch (e) {
+      if (errEl) { errEl.textContent = '❌ ' + e.message; errEl.classList.remove('hidden'); }
+      if (btn)   { btn.disabled = false; btn.innerHTML = '✅ Terminer &amp; Lancer Co-Caisse'; }
+    }
+  }
+
   // ===== BUSINESS CONFIG =====
 
   /**
@@ -2045,11 +2690,15 @@ class CocaisseApp {
 
     this.currentSection = section;
 
+    // Arrêter le polling plan de salle si on quitte la section
+    if (section !== 'floorplan') this.stopFloorPlanPolling();
+
     // Actions spécifiques par section
     if (section === 'dashboard') this.loadDashboard();
     if (section === 'orders') this.loadOrders();
     if (section === 'kitchen') this.loadKitchenOrders();
     if (section === 'products') this.filterProducts('');
+    if (section === 'floorplan') this.loadFloorPlan();
     if (section === 'history') {
       this.loadTransactions();
       this.checkClosureStatus();

@@ -2328,16 +2328,32 @@ class CocaisseApp {
 
     titleEl.textContent = `Table ${table.label} — ${table.capacity} pers.`;
 
+    // Boutons admin (modifier + supprimer) — visibles dans les deux cas
+    const adminButtons = this.currentUser?.role === 'admin' ? `
+      <div class="pt-2 border-t border-gray-100 space-y-2">
+        <button onclick="app.openTableForm('${table.id}')"
+          class="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition">
+          ✏️ Modifier la table
+        </button>
+        <button onclick="app.deleteTable('${table.id}')"
+          class="w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded-xl text-sm transition">
+          🗑️ Supprimer la table
+        </button>
+      </div>` : '';
+
     if (table.computed_status === 'free' || !table.order_id) {
       contentEl.innerHTML = `
-        <div class="text-center py-4">
-          <span class="text-4xl">🟢</span>
-          <p class="font-semibold text-gray-700 mt-2">Table libre</p>
-          <p class="text-sm text-gray-400 mb-4">Capacité : ${table.capacity} personnes</p>
+        <div class="space-y-3">
+          <div class="text-center py-2">
+            <span class="text-4xl">🟢</span>
+            <p class="font-semibold text-gray-700 mt-2">Table libre</p>
+            <p class="text-sm text-gray-400">Capacité : ${table.capacity} personnes</p>
+          </div>
           <button onclick="app.openNewOrderForTable('${this._esc(table.label)}')"
             class="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-xl text-sm transition">
             + Nouvelle commande
           </button>
+          ${adminButtons}
         </div>`;
     } else {
       const statusLabels = { draft:'📋 En attente', in_kitchen:'🍳 En cuisine', ready:'🔔 Prête', served:'🍽️ Servie' };
@@ -2359,15 +2375,7 @@ class CocaisseApp {
             class="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-xl text-sm transition">
             📋 Ouvrir la commande
           </button>
-          ${this.currentUser?.role === 'admin' ? `
-          <button onclick="app.openTableForm('${table.id}')"
-            class="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition">
-            ✏️ Modifier la table
-          </button>
-          <button onclick="app.deleteTable('${table.id}')"
-            class="w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded-xl text-sm transition">
-            🗑️ Supprimer la table
-          </button>` : ''}
+          ${adminButtons}
         </div>`;
     }
 

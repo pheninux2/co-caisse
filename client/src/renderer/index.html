@@ -1044,6 +1044,23 @@
                 </div>
             </div>
 
+            <!-- Modal : Confirmation générique -->
+            <div id="confirmModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+                    <div class="p-5 border-b border-gray-100 flex items-center gap-3">
+                        <span id="confirmModalIcon" class="text-2xl">⚠️</span>
+                        <h3 id="confirmModalTitle" class="font-bold text-gray-800">Confirmation</h3>
+                    </div>
+                    <div class="p-5">
+                        <p id="confirmModalMessage" class="text-sm text-gray-600"></p>
+                    </div>
+                    <div class="p-5 pt-0 flex gap-3">
+                        <button id="confirmModalCancel" class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition">Annuler</button>
+                        <button id="confirmModalOk" class="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl text-sm transition">Confirmer</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- ============ SETTINGS SECTION ============ -->
             <section id="settings-section" class="hidden h-full flex flex-col overflow-hidden bg-gray-50">
 

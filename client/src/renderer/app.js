@@ -1,5 +1,4 @@
-﻿
-import './styles/main.css';
+﻿import './styles/main.css';
 
 // API_URL injecté par webpack DefinePlugin depuis client/.env
 const API_URL = (typeof process !== 'undefined' && process.env && process.env.API_URL)
@@ -32,6 +31,7 @@ class CocaisseApp {
     this._dragState = null;
     this._drawElements = [];
     this._selectedDrawEl = null;
+    this._selectedTableId = null;
     this._currentDrawTool = 'select';
     this._drawing = false;
     this._drawStart = null;
@@ -1888,6 +1888,7 @@ class CocaisseApp {
       this.floorPlan        = layout.floor_plan;
       this.floorPlanTables  = layout.tables || [];
       this._drawElements    = drawData.elements || [];
+      this._selectedTableId = null; // réinitialiser la sélection
 
       // Fusionner statuts
       const statusMap = {};
@@ -2160,7 +2161,13 @@ class CocaisseApp {
 
     canvas.addEventListener('pointerdown', (e) => {
       if (!this.floorPlanEditMode) return;
-      if (this._currentDrawTool === 'select') return;
+      if (this._currentDrawTool === 'select') {
+        // Clic sur le canvas vide → désélectionner la table
+        if (!e.target.classList.contains('floor-table')) {
+          this._deselectFloorTable();
+        }
+        return;
+      }
       if (e.target.classList.contains('floor-table')) return; // clic sur table → drag
 
       const rect = canvas.getBoundingClientRect();
@@ -2282,11 +2289,47 @@ class CocaisseApp {
   }
 
   deleteSelectedDrawElement() {
+    // Priorité : supprimer une table sélectionnée en mode édition
+    if (this._selectedTableId) {
+      const table = this.floorPlanTables.find(t => t.id === this._selectedTableId);
+      // Bloquer si table occupée
+      if (table && table.computed_status && table.computed_status !== 'free') {
+        const statusLabels = { draft:'En attente', in_kitchen:'En cuisine', ready:'Prête', served:'Servie' };
+        this.toastError(`La table "${table.label}" est occupée (${statusLabels[table.computed_status] || table.computed_status}) — suppression impossible.`);
+        return;
+      }
+      this.deleteTable(this._selectedTableId);
+      return;
+    }
     if (!this._selectedDrawEl) { this.toastError('Aucun élément sélectionné'); return; }
     this._drawElements = this._drawElements.filter(e => e.id !== this._selectedDrawEl);
     this._selectedDrawEl = null;
     this._renderDrawElements();
     this.toastSuccess('Élément supprimé');
+  }
+
+  /** Sélectionne une table en mode édition (surbrillance + mémorisation). */
+  _selectFloorTable(tableId) {
+    // Désélectionner la précédente
+    if (this._selectedTableId) {
+      const prevEl = document.getElementById(`floor-table-${this._selectedTableId}`);
+      if (prevEl) prevEl.classList.remove('ring-2', 'ring-red-500', 'ring-offset-1');
+    }
+    this._selectedTableId = tableId;
+    // Désélectionner les éléments de dessin
+    this._selectedDrawEl = null;
+    // Mettre en surbrillance la table sélectionnée
+    const el = document.getElementById(`floor-table-${tableId}`);
+    if (el) el.classList.add('ring-2', 'ring-red-500', 'ring-offset-1');
+  }
+
+  /** Désélectionne la table courante (clic sur le canvas vide). */
+  _deselectFloorTable() {
+    if (this._selectedTableId) {
+      const el = document.getElementById(`floor-table-${this._selectedTableId}`);
+      if (el) el.classList.remove('ring-2', 'ring-red-500', 'ring-offset-1');
+      this._selectedTableId = null;
+    }
   }
 
   clearAllDrawElements() {
@@ -2329,17 +2372,43 @@ class CocaisseApp {
     titleEl.textContent = `Table ${table.label} — ${table.capacity} pers.`;
 
     // Boutons admin (modifier + supprimer) — visibles dans les deux cas
-    const adminButtons = this.currentUser?.role === 'admin' ? `
-      <div class="pt-2 border-t border-gray-100 space-y-2">
-        <button onclick="app.openTableForm('${table.id}')"
-          class="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition">
-          ✏️ Modifier la table
-        </button>
-        <button onclick="app.deleteTable('${table.id}')"
-          class="w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded-xl text-sm transition">
-          🗑️ Supprimer la table
-        </button>
-      </div>` : '';
+    const isOccupied = table.computed_status && table.computed_status !== 'free' || !!table.order_id;
+    const occupiedReason = isOccupied ? 'Table occupée — libérez la table avant de modifier ou supprimer' : '';
+
+    let adminButtons = '';
+    if (this.currentUser?.role === 'admin') {
+      if (isOccupied) {
+        // Boutons grisés avec tooltip
+        adminButtons = `
+          <div class="pt-2 border-t border-gray-100 space-y-2">
+            <div class="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 flex items-center gap-2 text-xs text-amber-700">
+              <span class="text-base">🔒</span>
+              <span>Table occupée — libérez-la pour modifier ou supprimer</span>
+            </div>
+            <button disabled title="${occupiedReason}"
+              class="w-full py-2 bg-gray-100 text-gray-400 font-medium rounded-xl text-sm cursor-not-allowed opacity-60 flex items-center justify-center gap-2">
+              ✏️ Modifier la table
+            </button>
+            <button disabled title="${occupiedReason}"
+              class="w-full py-2 bg-gray-100 text-gray-400 font-medium rounded-xl text-sm cursor-not-allowed opacity-60 flex items-center justify-center gap-2">
+              🗑️ Supprimer la table
+            </button>
+          </div>`;
+      } else {
+        // Boutons actifs — table libre
+        adminButtons = `
+          <div class="pt-2 border-t border-gray-100 space-y-2">
+            <button onclick="app.openTableForm('${table.id}')"
+              class="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition flex items-center justify-center gap-2">
+              ✏️ Modifier la table
+            </button>
+            <button onclick="app.deleteTable('${table.id}')"
+              class="w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded-xl text-sm transition flex items-center justify-center gap-2">
+              🗑️ Supprimer la table
+            </button>
+          </div>`;
+      }
+    }
 
     if (table.computed_status === 'free' || !table.order_id) {
       contentEl.innerHTML = `
@@ -2371,7 +2440,7 @@ class CocaisseApp {
             ${table.item_count ? `<p><span class="text-gray-500">Articles :</span> <strong>${table.item_count}</strong></p>` : ''}
             <p><span class="text-gray-500">Total :</span> <strong>${table.order_total ? table.order_total.toFixed(2) + ' €' : '—'}</strong></p>
           </div>
-          <button onclick="app.viewOrder('${table.order_id}')"
+          <button onclick="app.viewOrderDetail('${table.order_id}')"
             class="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-xl text-sm transition">
             📋 Ouvrir la commande
           </button>
@@ -2433,6 +2502,10 @@ class CocaisseApp {
       if (this._currentDrawTool !== 'select' && this.floorPlanEditMode) return;
       e.preventDefault();
       e.stopPropagation();
+
+      // Mémoriser la table sélectionnée (pour le bouton Suppr.)
+      this._selectFloorTable(tableId);
+
       const canvas  = document.getElementById('floorPlanCanvas');
       const rect    = canvas.getBoundingClientRect();
       const elRect  = el.getBoundingClientRect();
@@ -2539,6 +2612,19 @@ class CocaisseApp {
     if (tableId) {
       const table = this.floorPlanTables.find(t => t.id === tableId);
       if (!table) return;
+
+      // Bloquer la modification si la table est occupée
+      if (table.computed_status && table.computed_status !== 'free') {
+        const statusLabels = { draft:'En attente', in_kitchen:'En cuisine', ready:'Prête', served:'Servie' };
+        const label = statusLabels[table.computed_status] || table.computed_status;
+        this.toastError(`La table "${table.label}" est occupée (${label}) — modification impossible.`);
+        return;
+      }
+      if (table.order_id) {
+        this.toastError(`La table "${table.label}" est liée à une commande active — modification impossible.`);
+        return;
+      }
+
       if (titleEl) titleEl.textContent = `Modifier — Table ${table.label}`;
       if (idEl)    idEl.value    = table.id;
       if (labelEl) labelEl.value = table.label;
@@ -2597,12 +2683,19 @@ class CocaisseApp {
   async deleteTable(tableId) {
     const table = this.floorPlanTables.find(t => t.id === tableId);
     if (!table) return;
-    if (!confirm(`Supprimer la table "${table.label}" ?`)) return;
+
+    const confirmed = await this.showConfirm(
+      `Supprimer la table "${table.label}" ? Cette action est irréversible.`,
+      { title: 'Supprimer la table', icon: '🗑️', okLabel: 'Supprimer' }
+    );
+    if (!confirmed) return;
+
     try {
       const res  = await this.apiFetch(`${API_URL}/tables/${tableId}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erreur');
       this.toastSuccess(data.message || 'Table supprimée');
+      this._selectedTableId = null;
       this.closeFloorTableDetail();
       await this.loadFloorPlan();
       this.refreshTableSelect();
@@ -4732,6 +4825,48 @@ ${sep}`;
 
   closeModal(id) {
     document.getElementById(id)?.classList.add('hidden');
+  }
+
+  /**
+   * Modale de confirmation personnalisée (remplace window.confirm).
+   * Retourne une Promise<boolean>.
+   * @param {string} message   — texte affiché
+   * @param {string} [title]   — titre (défaut "Confirmation")
+   * @param {string} [icon]    — emoji icône (défaut "⚠️")
+   * @param {string} [okLabel] — texte bouton OK (défaut "Confirmer")
+   */
+  showConfirm(message, { title = 'Confirmation', icon = '⚠️', okLabel = 'Confirmer' } = {}) {
+    return new Promise((resolve) => {
+      const modal   = document.getElementById('confirmModal');
+      const titleEl = document.getElementById('confirmModalTitle');
+      const iconEl  = document.getElementById('confirmModalIcon');
+      const msgEl   = document.getElementById('confirmModalMessage');
+      const okBtn   = document.getElementById('confirmModalOk');
+      const cancelBtn = document.getElementById('confirmModalCancel');
+      if (!modal) { resolve(window.confirm(message)); return; }
+
+      if (titleEl)   titleEl.textContent = title;
+      if (iconEl)    iconEl.textContent  = icon;
+      if (msgEl)     msgEl.textContent   = message;
+      if (okBtn)     okBtn.textContent   = okLabel;
+
+      // Nettoyer les anciens listeners
+      const newOk     = okBtn.cloneNode(true);
+      const newCancel = cancelBtn.cloneNode(true);
+      okBtn.replaceWith(newOk);
+      cancelBtn.replaceWith(newCancel);
+
+      this.openModal('confirmModal');
+
+      newOk.addEventListener('click', () => {
+        this.closeModal('confirmModal');
+        resolve(true);
+      }, { once: true });
+      newCancel.addEventListener('click', () => {
+        this.closeModal('confirmModal');
+        resolve(false);
+      }, { once: true });
+    });
   }
 
   updateClock() {

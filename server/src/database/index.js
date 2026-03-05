@@ -371,6 +371,28 @@ class Database {
       await conn.query('SET FOREIGN_KEY_CHECKS = 1');
       console.log('✅ Database connected');
       console.log('✅ All tables created/verified');
+
+      // ── Column guards : colonnes ajoutées post-création ──────────────────
+      // S'assure que les colonnes existent même si la migration n'a pas été jouée
+      // ou si la table existait avant l'ajout de la migration.
+      const columnGuards = [
+        {
+          table: 'settings',
+          column: 'country',
+          ddl: "ALTER TABLE `settings` ADD COLUMN `country` VARCHAR(5) DEFAULT 'FR' COMMENT 'Code pays ISO (FR, MA, BE, CH)'",
+        },
+      ];
+      for (const guard of columnGuards) {
+        const [cols] = await conn.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+          [guard.table, guard.column]
+        );
+        if (cols.length === 0) {
+          await conn.query(guard.ddl);
+          console.log(`✅ Colonne ajoutée : ${guard.table}.${guard.column}`);
+        }
+      }
     } finally {
       conn.release();
     }

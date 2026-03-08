@@ -14,6 +14,38 @@ import {
 
 const router = express.Router();
 
+// ── Helper : décrémente le stock des produits vendus ─────────────────────────
+async function decrementStock(db, items, txId, userId) {
+  try {
+    const parsed = Array.isArray(items) ? items : JSON.parse(items || '[]');
+    for (const item of parsed) {
+      if (!item.id) continue;
+      const product = await db.get(
+        'SELECT id, stock, stock_enabled FROM products WHERE id = ? AND active = 1',
+        [item.id]
+      );
+      if (!product || !product.stock_enabled) continue;
+
+      const qty       = Number(item.quantity) || 1;
+      const newStock  = Math.max(0, (Number(product.stock) || 0) - qty);
+
+      await db.run(
+        'UPDATE products SET stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [newStock, item.id]
+      );
+      // Mouvement de stock (sortie vente)
+      await db.run(
+        `INSERT INTO stock_movements (id, product_id, quantity, stock_after, reason, reference, user_id)
+         VALUES (?, ?, ?, ?, 'vente', ?, ?)`,
+        [uuidv4(), item.id, -qty, newStock, txId, userId]
+      );
+    }
+  } catch (err) {
+    // Ne jamais bloquer l'encaissement pour une erreur de stock
+    console.error('[stock] Erreur décrémentation stock :', err.message);
+  }
+}
+
 // ── POST / — Créer une transaction ───────────────────────────────────────────
 router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
@@ -119,6 +151,9 @@ router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
         console.error('[fiscal] Erreur mise à jour fiscal_chain :', chainErr.message);
       }
     }
+
+    // ── Décrémentation automatique des stocks ────────────────────────────────
+    await decrementStock(db, items, receiptNumber, req.userId);
 
     const transaction = await db.get(
       'SELECT * FROM `transactions` WHERE id = ?', [txId]

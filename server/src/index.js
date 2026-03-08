@@ -28,7 +28,8 @@ import configRoutes      from './routes/config.js'; // Configuration établissem
 import receiptRoutes     from './routes/receipts.js'; // Tickets dématérialisés AGEC
 import rgpdRoutes        from './routes/rgpd.js'; // RGPD purge & conservation
 import setupRoutes       from './routes/setup.js'; // Wizard premier démarrage
-import tableRoutes       from './routes/tables.js'; // Plan de salle visuel
+import tableRoutes       from './routes/tables.js';   // Plan de salle
+import stockRoutes       from './routes/stock.js';    // Gestion des stocks
 import { startPurgeJob } from './jobs/purgeJob.js'; // Cron RGPD 03h00
 
 const app  = express();
@@ -89,6 +90,7 @@ app.use('/api/categories',   authMiddleware, categoryRoutes);
 app.use('/api/transactions', authMiddleware, transactionRoutes);
 app.use('/api/orders',       authMiddleware, orderRoutes);
 app.use('/api/tables',       authMiddleware, tableRoutes);   // Plan de salle
+app.use('/api/stock',        authMiddleware, stockRoutes);   // Gestion des stocks
 app.use('/api/reports',      authMiddleware, reportRoutes);
 app.use('/api/settings',     authMiddleware, settingsRoutes);
 app.use('/api/admin',        adminRoutes);   // auth + roleCheck admin dans le router

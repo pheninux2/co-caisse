@@ -1252,8 +1252,8 @@ class CocaisseApp {
 
     productsList.innerHTML = filtered.map(product => `
       <div class="product-card" onclick="app.addToCart('${product.id}')">
-        ${product.image_url 
-          ? `<img src="${product.image_url}" alt="${product.name}" class="product-card-img">` 
+        ${product.image_url
+          ? `<img src="${product.image_url}" alt="${product.name}" class="product-card-img">`
           : `<div class="w-full aspect-square bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg mb-1.5 flex items-center justify-center text-2xl">📦</div>`
         }
         <p class="product-card-name">${product.name}</p>
@@ -1324,8 +1324,8 @@ class CocaisseApp {
       <tr>
         <td class="px-3 py-2">
           <div class="flex items-center gap-2">
-            ${product.image_url 
-              ? `<img src="${product.image_url}" alt="${product.name}" class="w-8 h-8 rounded-lg object-cover">` 
+            ${product.image_url
+              ? `<img src="${product.image_url}" alt="${product.name}" class="w-8 h-8 rounded-lg object-cover">`
               : `<div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm">📦</div>`
             }
             <span class="font-medium">${product.name}</span>
@@ -1373,6 +1373,9 @@ class CocaisseApp {
         const chartContainer = document.getElementById('paymentMethodsChart');
         if (chartContainer) chartContainer.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">Module Statistiques non activé</p>';
       }
+
+      // Alertes stock dans le dashboard
+      await this.loadStockAlerts();
     } catch (error) {
       console.error('Error loading dashboard:', error);
     }
@@ -3212,14 +3215,14 @@ class CocaisseApp {
   }
 
   openProductDialog(productId = null) {
-    document.getElementById('productId').value = productId || '';
+    // ── 1. Reconstruire le select catégorie ────────────────────────────────
+    const select = document.getElementById('productCategory');
+    if (select) {
+      select.innerHTML = '<option value="">Sélectionner une catégorie</option>' +
+        this.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    }
 
-    // Reset image preview
-    const preview = document.getElementById('productImagePreview');
-    if (preview) preview.innerHTML = '📦';
-    document.getElementById('productImageData').value = '';
-
-    // Injecter les options TVA dynamiques selon la config pays
+    // ── 2. Injecter les options TVA ────────────────────────────────────────
     const taxSelect = document.getElementById('productTax');
     if (taxSelect) {
       taxSelect.innerHTML = this.buildVatOptions(
@@ -3229,42 +3232,62 @@ class CocaisseApp {
       );
     }
 
-    if (productId) {
-      const product = this.products.find(p => p.id === productId);
-      if (product) {
+    // ── 3. Ouvrir la modale (peut déplacer le nœud dans le DOM) ───────────
+    document.getElementById('productId').value = productId || '';
+    this.openModal('productModal');
+
+    // ── 4. Remplir les champs APRÈS le rendu (évite la réinitialisation) ──
+    requestAnimationFrame(() => {
+      const preview = document.getElementById('productImagePreview');
+      if (preview) preview.innerHTML = '📦';
+      document.getElementById('productImageData').value = '';
+
+      if (productId) {
+        const product = this.products.find(p => p.id === productId);
+        if (!product) return;
+
         document.getElementById('productName').value        = product.name;
         document.getElementById('productDescription').value = product.description || '';
-        document.getElementById('productCategory').value    = product.category_id;
         document.getElementById('productPrice').value       = product.price;
         document.getElementById('productCost').value        = product.cost || '';
-        if (taxSelect) taxSelect.value = product.tax_rate ?? this.getDefaultVatRate();
         document.getElementById('productBarcode').value     = product.barcode || '';
-        document.getElementById('productStock').value       = product.stock || 0;
+        document.getElementById('productStock').value       = product.stock ?? 0;
+        if (select)    select.value    = product.category_id;
+        if (taxSelect) taxSelect.value = product.tax_rate ?? this.getDefaultVatRate();
 
-        if (product.image_url) {
+        if (product.image_url && preview) {
           preview.innerHTML = `<img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover rounded-xl">`;
           document.getElementById('productImageData').value = product.image_url;
         }
+
+        // Champs stock — lire stock_enabled comme entier MariaDB (0/1) ou booléen
+        const stockEnabled = product.stock_enabled === 1 || product.stock_enabled === true;
+        const stockChk     = document.getElementById('productStockEnabled');
+        const thEl         = document.getElementById('productStockThreshold');
+        const unEl         = document.getElementById('productStockUnit');
+        if (thEl) thEl.value     = product.stock_alert_threshold ?? 5;
+        if (unEl) unEl.value     = product.stock_unit || 'pièces';
+        if (stockChk) {
+          stockChk.checked = stockEnabled;
+          this.toggleStockFields(stockEnabled);
+        }
+      } else {
+        // Nouveau produit — reset
+        document.getElementById('productName').value        = '';
+        document.getElementById('productDescription').value = '';
+        document.getElementById('productPrice').value       = '';
+        document.getElementById('productCost').value        = '';
+        document.getElementById('productBarcode').value     = '';
+        document.getElementById('productStock').value       = '';
+        if (taxSelect) taxSelect.value = this.getDefaultVatRate();
+        const stockChk = document.getElementById('productStockEnabled');
+        const thEl     = document.getElementById('productStockThreshold');
+        const unEl     = document.getElementById('productStockUnit');
+        if (thEl)     thEl.value     = 5;
+        if (unEl)     unEl.value     = 'pièces';
+        if (stockChk) { stockChk.checked = false; this.toggleStockFields(false); }
       }
-    } else {
-      document.getElementById('productName').value        = '';
-      document.getElementById('productDescription').value = '';
-      document.getElementById('productPrice').value       = '';
-      document.getElementById('productCost').value        = '';
-      document.getElementById('productBarcode').value     = '';
-      document.getElementById('productStock').value       = '';
-    }
-
-    const select = document.getElementById('productCategory');
-    select.innerHTML = '<option value="">Sélectionner une catégorie</option>' +
-      this.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-
-    if (productId) {
-      const product = this.products.find(p => p.id === productId);
-      if (product) select.value = product.category_id;
-    }
-
-    this.openModal('productModal');
+    });
   }
 
   // Prévisualisation de l'image du produit
@@ -3394,6 +3417,341 @@ class CocaisseApp {
       this.toastSuccess('Catégorie supprimée');
     } catch (error) {
       this.toastError('Erreur: ' + error.message);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // ── GESTION DES STOCKS ───────────────────────────────────────
+  // ════════════════════════════════════════════════════════════
+
+  /** Affiche/cache les champs stock selon le toggle */
+  toggleStockFields(enabled) {
+    const wrapper = document.getElementById('stockFieldsWrapper');
+    if (wrapper) wrapper.classList.toggle('hidden', !enabled);
+  }
+
+  /** Gestion des onglets Produits / Stocks dans la section produits */
+  showProductsTab(tab) {
+    ['products', 'stock'].forEach(t => {
+      const btn   = document.getElementById(`ptab-${t}`);
+      const panel = document.getElementById(`ptab-panel-${t}`);
+      if (btn) {
+        btn.classList.toggle('border-indigo-500',  t === tab);
+        btn.classList.toggle('text-indigo-600',    t === tab);
+        btn.classList.toggle('bg-indigo-50',       t === tab);
+        btn.classList.toggle('border-transparent', t !== tab);
+        btn.classList.toggle('text-gray-500',      t !== tab);
+      }
+      if (panel) {
+        panel.classList.toggle('hidden', t !== tab);
+        panel.classList.toggle('flex',   t === tab);
+      }
+    });
+    if (tab === 'stock') this.loadStockReport();
+  }
+
+  /** Charge et affiche le rapport stock complet */
+  async loadStockReport() {
+    const tbody = document.getElementById('stockReportTable');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-gray-400">⏳ Chargement...</td></tr>`;
+    try {
+      const res  = await this.apiFetch(`${API_URL}/stock`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      this._stockData = data;
+      this._stockStatusFilter = this._stockStatusFilter || 'all';
+      this._renderStockTable(data);
+    } catch (e) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-red-400">Erreur : ${e.message}</td></tr>`;
+    }
+  }
+
+  /** Rend le tableau stock selon les données et filtres courants */
+  _renderStockTable(data) {
+    const tbody       = document.getElementById('stockReportTable');
+    if (!tbody) return;
+    const statusFilter = this._stockStatusFilter || 'all';
+    const textFilter   = (document.getElementById('stockSearch')?.value || '').toLowerCase();
+
+    const filtered = data.filter(p => {
+      if (statusFilter !== 'all' && p.stock_status !== statusFilter) return false;
+      if (textFilter && !p.name.toLowerCase().includes(textFilter)) return false;
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">Aucun produit trouvé</td></tr>`;
+      return;
+    }
+
+    const statusConfig = {
+      out:      { label: '🔴 Rupture',   cls: 'bg-red-100 text-red-700 font-bold' },
+      low:      { label: '🟡 Stock bas', cls: 'bg-amber-100 text-amber-700' },
+      ok:       { label: '🟢 OK',        cls: 'bg-green-100 text-green-700' },
+      disabled: { label: '⚪ Désactivé', cls: 'bg-gray-100 text-gray-500' },
+    };
+
+    tbody.innerHTML = filtered.map(p => {
+      const sc   = statusConfig[p.stock_status] || statusConfig.disabled;
+      const unit = p.stock_unit || 'pièces';
+      return `
+        <tr class="${p.stock_status === 'out' ? 'bg-red-50' : p.stock_status === 'low' ? 'bg-amber-50' : ''}">
+          <td class="px-3 py-2 font-medium">${this._esc(p.name)}</td>
+          <td class="px-3 py-2 text-gray-500 hidden sm:table-cell text-sm">${this._esc(p.category_name || '—')}</td>
+          <td class="px-3 py-2 text-center font-bold ${p.stock_status === 'out' ? 'text-red-600' : 'text-gray-800'}">
+            ${p.stock_status === 'disabled' ? '—' : `${p.stock ?? 0} <span class="text-xs font-normal text-gray-400">${unit}</span>`}
+          </td>
+          <td class="px-3 py-2 text-center text-sm text-gray-500">
+            ${p.stock_status === 'disabled' ? '—' : `${p.stock_alert_threshold ?? 5} ${unit}`}
+          </td>
+          <td class="px-3 py-2 text-center">
+            <span class="badge ${sc.cls}">${sc.label}</span>
+          </td>
+          <td class="px-3 py-2 text-center">
+            <button onclick="app.openStockAdjust('${p.id}')"
+              class="action-btn bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs px-2 py-1 rounded-lg" title="Ajuster le stock">
+              📦 Ajuster
+            </button>
+            <button onclick="app.openStockMovements('${p.id}', '${this._esc(p.name)}')"
+              class="action-btn bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 text-xs px-2 py-1 rounded-lg ml-1" title="Historique">
+              📋
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  /** Filtrer le rapport stock par texte */
+  filterStockReport(text) {
+    if (this._stockData) this._renderStockTable(this._stockData);
+  }
+
+  /** Filtrer le rapport stock par statut */
+  filterStockByStatus(status) {
+    this._stockStatusFilter = status;
+    document.querySelectorAll('.stock-filter-btn').forEach(btn => {
+      const btnStatus = btn.id.replace('stockFilter-', '');
+      btn.classList.toggle('bg-gray-800',   btnStatus === status);
+      btn.classList.toggle('text-white',    btnStatus === status);
+      btn.classList.toggle('bg-gray-100',   btnStatus !== status);
+      btn.classList.toggle('text-gray-600', btnStatus !== status);
+    });
+    if (this._stockData) this._renderStockTable(this._stockData);
+  }
+
+  /** Ouvre la modale d'ajustement de stock */
+  openStockAdjust(productId) {
+    const product = this.products.find(p => p.id === productId)
+                 || (this._stockData || []).find(p => p.id === productId);
+    if (!product) return;
+
+    this._stockAdjustMode = 'delta_plus';
+    document.getElementById('stockAdjustProductId').value         = productId;
+    document.getElementById('stockAdjustProductName').textContent = product.name;
+    document.getElementById('stockAdjustCurrent').textContent     = product.stock ?? 0;
+    document.getElementById('stockAdjustUnit').textContent        = product.stock_unit || 'pièces';
+    document.getElementById('stockAdjustQty').value               = 1;
+    document.getElementById('stockAdjustReason').value            = 'adjustment';
+    this._updateStockAdjustPreview();
+    this.setStockAdjustMode('delta_plus');
+    this.openModal('stockAdjustModal');
+  }
+
+  /** Change le mode d'ajustement (entrée / sortie / inventaire) */
+  setStockAdjustMode(mode) {
+    this._stockAdjustMode = mode;
+    const labels = {
+      delta_plus:  'Quantité à ajouter',
+      delta_minus: 'Quantité à retirer',
+      set:         'Nouveau stock total',
+    };
+    const qtyLabel = document.getElementById('stockAdjustQtyLabel');
+    if (qtyLabel) qtyLabel.textContent = labels[mode] || 'Quantité';
+
+    document.querySelectorAll('.stock-adj-btn').forEach(btn => {
+      const btnMode = btn.id.replace('adjBtn_', '');
+      const isActive = btnMode === mode;
+      btn.classList.toggle('ring-2',          isActive);
+      btn.classList.toggle('ring-offset-1',   isActive);
+      btn.classList.toggle('ring-indigo-400', isActive);
+    });
+    this._updateStockAdjustPreview();
+  }
+
+  /** Met à jour le stock estimé en temps réel */
+  _updateStockAdjustPreview() {
+    const current = parseFloat(document.getElementById('stockAdjustCurrent')?.textContent) || 0;
+    const qty     = parseFloat(document.getElementById('stockAdjustQty')?.value) || 0;
+    const mode    = this._stockAdjustMode || 'delta_plus';
+    let preview;
+    if      (mode === 'delta_plus')  preview = Math.max(0, current + qty);
+    else if (mode === 'delta_minus') preview = Math.max(0, current - qty);
+    else                             preview = Math.max(0, qty);
+    const el = document.getElementById('stockAdjustPreview');
+    if (el) el.textContent = preview.toFixed(2).replace(/\.00$/, '');
+  }
+
+  /** Sauvegarde l'ajustement de stock */
+  async saveStockAdjustment() {
+    const productId = document.getElementById('stockAdjustProductId')?.value;
+    const qty       = parseFloat(document.getElementById('stockAdjustQty')?.value);
+    const reason    = document.getElementById('stockAdjustReason')?.value || 'adjustment';
+    const mode      = this._stockAdjustMode || 'delta_plus';
+
+    if (!productId || isNaN(qty) || qty < 0) {
+      this.toastError('Quantité invalide'); return;
+    }
+
+    let apiQty  = qty;
+    let apiMode = 'delta';
+    if      (mode === 'delta_plus')  { apiQty =  qty; apiMode = 'delta'; }
+    else if (mode === 'delta_minus') { apiQty = -qty; apiMode = 'delta'; }
+    else                             { apiQty =  qty; apiMode = 'set'; }
+
+    try {
+      const res  = await this.apiFetch(`${API_URL}/stock/${productId}/adjust`, {
+        method: 'POST',
+        body: JSON.stringify({ quantity: apiQty, mode: apiMode, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      this.toastSuccess(`Stock mis à jour : ${data.stock_after} ${document.getElementById('stockAdjustUnit')?.textContent || ''}`);
+      this.closeModal('stockAdjustModal');
+      await this.loadProducts();
+      if (this._stockData) await this.loadStockReport();
+    } catch (e) {
+      this.toastError(e.message);
+    }
+  }
+
+  /** Ouvre l'historique des mouvements d'un produit */
+  async openStockMovements(productId, productName) {
+    document.getElementById('stockMovementsProductName').textContent = productName;
+    document.getElementById('stockMovementsContent').innerHTML =
+      `<p class="text-center text-gray-400 py-4">⏳ Chargement...</p>`;
+    this.openModal('stockMovementsModal');
+    try {
+      const res  = await this.apiFetch(`${API_URL}/stock/${productId}/movements?limit=50`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const reasonLabels = {
+        vente:      '🛒 Vente',
+        adjustment: '📋 Inventaire',
+        delivery:   '🚚 Livraison',
+        return:     '↩️ Retour',
+        loss:       '💔 Perte/Casse',
+        other:      '📝 Autre',
+      };
+
+      if (data.length === 0) {
+        document.getElementById('stockMovementsContent').innerHTML =
+          `<p class="text-center text-gray-400 py-8">Aucun mouvement enregistré</p>`;
+        return;
+      }
+
+      document.getElementById('stockMovementsContent').innerHTML = data.map(mv => {
+        const isIn = mv.quantity > 0;
+        const dt   = new Date(mv.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+        return `
+          <div class="flex items-center justify-between p-2.5 rounded-lg ${isIn ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">${isIn ? '⬆️' : '⬇️'}</span>
+              <div>
+                <p class="text-sm font-medium text-gray-800">${reasonLabels[mv.reason] || mv.reason}</p>
+                <p class="text-xs text-gray-500">${mv.user_name || '—'} · ${dt}</p>
+                ${mv.reference ? `<p class="text-xs text-gray-400">Réf: ${mv.reference}</p>` : ''}
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="font-bold ${isIn ? 'text-green-600' : 'text-red-600'}">${isIn ? '+' : ''}${mv.quantity}</p>
+              <p class="text-xs text-gray-500">→ ${mv.stock_after}</p>
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      document.getElementById('stockMovementsContent').innerHTML =
+        `<p class="text-center text-red-400 py-4">Erreur : ${e.message}</p>`;
+    }
+  }
+
+  /** Export CSV du rapport stock */
+  async exportStockCSV() {
+    try {
+      const res  = await this.apiFetch(`${API_URL}/stock`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const headers = ['Produit', 'Catégorie', 'Stock actuel', 'Unité', 'Seuil alerte', 'Statut'];
+      const statusLabels = { out: 'Rupture', low: 'Stock bas', ok: 'OK', disabled: 'Désactivé' };
+      const rows = data.map(p => [
+        `"${p.name}"`,
+        `"${p.category_name || ''}"`,
+        p.stock ?? 0,
+        `"${p.stock_unit || 'pièces'}"`,
+        p.stock_alert_threshold ?? 5,
+        `"${statusLabels[p.stock_status] || p.stock_status}"`,
+      ]);
+
+      const csv  = [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `stock_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.toastSuccess('Export CSV téléchargé');
+    } catch (e) {
+      this.toastError('Erreur export : ' + e.message);
+    }
+  }
+
+  /** Charge les alertes stock pour le badge 🔔 et le dashboard */
+  async loadStockAlerts() {
+    try {
+      const res = await this.apiFetch(`${API_URL}/stock/alerts`);
+      if (!res.ok) return [];
+      const alerts = await res.json();
+      this._stockAlerts = alerts;
+      this._renderStockAlertsDashboard(alerts);
+      return alerts;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /** Rendu du bloc alertes stock dans le dashboard */
+  _renderStockAlertsDashboard(alerts) {
+    const container = document.getElementById('stockAlertsDashboard');
+    const list      = document.getElementById('stockAlertsDashboardList');
+    if (!container || !list) return;
+
+    if (!alerts || alerts.length === 0) {
+      container.classList.add('hidden'); return;
+    }
+    container.classList.remove('hidden');
+    list.innerHTML = alerts.slice(0, 8).map(p => {
+      const isOut = p.alert_type === 'out';
+      return `
+        <div class="flex items-center justify-between p-2 rounded-lg ${isOut ? 'bg-red-50 border border-red-200' : 'bg-amber-50 border border-amber-200'}">
+          <div class="flex items-center gap-2">
+            <span>${isOut ? '🔴' : '🟡'}</span>
+            <div>
+              <p class="text-sm font-medium text-gray-800">${this._esc(p.name)}</p>
+              <p class="text-xs text-gray-500">${p.category_name || ''}</p>
+            </div>
+          </div>
+          <div class="text-right">
+            <p class="font-bold ${isOut ? 'text-red-600' : 'text-amber-600'} text-sm">${p.stock ?? 0} ${p.stock_unit || 'pièces'}</p>
+            <p class="text-xs text-gray-400">seuil : ${p.stock_alert_threshold}</p>
+          </div>
+        </div>`;
+    }).join('');
+    if (alerts.length > 8) {
+      list.innerHTML += `<p class="text-xs text-center text-gray-400 pt-1">+ ${alerts.length - 8} autres alertes</p>`;
     }
   }
 
@@ -4811,8 +5169,11 @@ ${sep}`;
   openModal(id) {
     const modal = document.getElementById(id);
     if (!modal) return;
-    // Garantit le z-order au-dessus de tout
-    if (modal.parentElement !== document.body) document.body.appendChild(modal);
+    // Garantit le z-order au-dessus de tout SEULEMENT si la modale n'est pas
+    // déjà un enfant direct du body — évite la réinitialisation des <input>/<checkbox>
+    if (modal.parentElement !== document.body) {
+      document.body.appendChild(modal);
+    }
     // Reforce l'animation pour qu'elle démarre immédiatement
     const content = modal.querySelector('.modal-content');
     if (content) {
@@ -6267,86 +6628,84 @@ CocaisseApp.prototype.displayCriticalAlerts = function(alerts) {
 };
 
 CocaisseApp.prototype.showAlertsPanel = function() {
+  const stockAlerts  = this._stockAlerts || [];
+  const orderAlerts  = this.alerts || [];
+  const totalCount   = orderAlerts.length + stockAlerts.length;
+
+  const stockSection = stockAlerts.length === 0 ? '' : `
+    <div class="mt-4 pt-4 border-t border-gray-100">
+      <h3 class="font-bold text-gray-700 mb-2 flex items-center gap-2">
+        📦 Alertes Stock
+        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">${stockAlerts.length}</span>
+      </h3>
+      <div class="space-y-2">
+        ${stockAlerts.map(p => `
+          <div class="flex items-center justify-between p-2.5 rounded-lg ${p.alert_type === 'out' ? 'bg-red-50 border border-red-200' : 'bg-amber-50 border border-amber-200'}">
+            <div class="flex items-center gap-2">
+              <span>${p.alert_type === 'out' ? '🔴' : '🟡'}</span>
+              <div>
+                <p class="text-sm font-medium text-gray-800">${this._esc(p.name)}</p>
+                <p class="text-xs text-gray-500">${p.alert_type === 'out' ? 'Rupture de stock' : 'Stock bas'}</p>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="font-bold ${p.alert_type === 'out' ? 'text-red-600' : 'text-amber-600'} text-sm">${p.stock ?? 0} ${p.stock_unit || ''}</p>
+              <button onclick="app.closeModal('alertsModal'); app.showSection('products'); setTimeout(()=>app.showProductsTab('stock'),200)"
+                class="text-xs text-indigo-600 hover:underline">Gérer →</button>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
   const modalContent = `
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-        🔔 Alertes Commandes
-        ${this.alerts.length > 0 ? `<span class="text-sm font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">${this.alerts.length}</span>` : ''}
+        🔔 Alertes
+        ${totalCount > 0 ? `<span class="text-sm font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">${totalCount}</span>` : ''}
       </h2>
-      <button onclick="app.closeModal('alertsModal')" 
-        class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-800 text-lg font-bold transition">
-        ✕
-      </button>
+      <button onclick="app.closeModal('alertsModal')"
+        class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-800 text-lg font-bold transition">✕</button>
     </div>
     <div style="max-height: 65vh; overflow-y: auto;">
-      ${this.alerts.length === 0 ? `
+      ${orderAlerts.length === 0 && stockAlerts.length === 0 ? `
         <div class="text-center py-12">
           <p class="text-5xl mb-3">✅</p>
           <p class="text-gray-500 text-lg font-medium">Aucune alerte en cours</p>
         </div>
       ` : `
-        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
-          <p class="text-sm text-blue-800">
-            <strong>${this.alerts.length}</strong> alerte${this.alerts.length > 1 ? 's' : ''} active${this.alerts.length > 1 ? 's' : ''}
-          </p>
-          <button 
-            onclick="app.dismissAllAlerts()" 
-            class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-          >
-            ✓ Tout marquer comme vu
-          </button>
-        </div>
-        ${this.alerts.map(alert => `
-          <div class="p-4 mb-3 rounded-xl border-2 ${
-            alert.alert_level === 'critical'
-              ? 'bg-red-50 border-red-400'
-              : 'bg-orange-50 border-orange-400'
-          }">
-            <div class="flex items-start justify-between mb-2">
-              <div>
-                <p class="font-bold text-base ${alert.alert_level === 'critical' ? 'text-red-700' : 'text-orange-700'}">
-                  ${alert.alert_level === 'critical' ? '🚨' : '⚠️'} ${alert.order_number}
-                </p>
-                <p class="text-xs text-gray-500 mt-0.5">${alert.table_number || 'Sans table'}</p>
-              </div>
-              <span class="px-2 py-1 rounded-full text-xs font-semibold ${
-                alert.alert_level === 'critical'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-orange-500 text-white'
-              }">
-                ${alert.status_label}
-              </span>
-            </div>
-            <div class="mb-3 text-sm text-gray-700 space-y-0.5">
-              <p><span class="font-medium">Temps écoulé :</span> ${this._elapsedMin(alert.status_since)} min</p>
-              <p><span class="font-medium">Retard :</span> ${alert.delay_minutes} min</p>
-              ${this.currentUser?.role === 'admin' ? `
-                <p><span class="font-medium">Créée par :</span> ${alert.cashier_name}</p>
-              ` : ''}
-            </div>
-            <div class="flex gap-2">
-              <button
-                onclick="app.closeModal('alertsModal'); app.viewOrderDetail('${alert.id}')"
-                class="flex-1 py-1.5 text-sm font-medium bg-white border border-blue-300 text-blue-700 hover:bg-blue-50 rounded-lg transition">
-                👁️ Voir détails
-              </button>
-              ${alert.status === 'draft' ? `
-                <button
-                  onclick="app.closeModal('alertsModal'); app.validateOrder('${alert.id}')"
-                  class="flex-1 py-1.5 text-sm font-medium bg-green-500 hover:bg-green-600 text-white rounded-lg transition">
-                  ✅ Valider
-                </button>
-              ` : ''}
-            </div>
+        ${orderAlerts.length > 0 ? `
+          <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+            <p class="text-sm text-blue-800"><strong>${orderAlerts.length}</strong> alerte${orderAlerts.length > 1 ? 's' : ''} commande${orderAlerts.length > 1 ? 's' : ''}</p>
+            <button onclick="app.dismissAllAlerts()" class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">✓ Tout marquer comme vu</button>
           </div>
-        `).join('')}
+          ${orderAlerts.map(alert => `
+            <div class="p-4 mb-3 rounded-xl border-2 ${alert.alert_level === 'critical' ? 'bg-red-50 border-red-400' : 'bg-orange-50 border-orange-400'}">
+              <div class="flex items-start justify-between mb-2">
+                <div>
+                  <p class="font-bold text-base ${alert.alert_level === 'critical' ? 'text-red-700' : 'text-orange-700'}">
+                    ${alert.alert_level === 'critical' ? '🚨' : '⚠️'} ${alert.order_number}
+                  </p>
+                  <p class="text-xs text-gray-500 mt-0.5">${alert.table_number || 'Sans table'}</p>
+                </div>
+                <span class="px-2 py-1 rounded-full text-xs font-semibold ${alert.alert_level === 'critical' ? 'bg-red-600 text-white' : 'bg-orange-500 text-white'}">${alert.status_label}</span>
+              </div>
+              <div class="mb-3 text-sm text-gray-700 space-y-0.5">
+                <p><span class="font-medium">Temps écoulé :</span> ${this._elapsedMin(alert.status_since)} min</p>
+                <p><span class="font-medium">Retard :</span> ${alert.delay_minutes} min</p>
+                ${this.currentUser?.role === 'admin' ? `<p><span class="font-medium">Créée par :</span> ${alert.cashier_name}</p>` : ''}
+              </div>
+              <div class="flex gap-2">
+                <button onclick="app.closeModal('alertsModal'); app.viewOrderDetail('${alert.id}')"
+                  class="flex-1 py-1.5 text-sm font-medium bg-white border border-blue-300 text-blue-700 hover:bg-blue-50 rounded-lg transition">👁️ Voir détails</button>
+                ${alert.status === 'draft' ? `<button onclick="app.closeModal('alertsModal'); app.validateOrder('${alert.id}')" class="flex-1 py-1.5 text-sm font-medium bg-green-500 hover:bg-green-600 text-white rounded-lg transition">✅ Valider</button>` : ''}
+              </div>
+            </div>`).join('')}
+        ` : ''}
+        ${stockSection}
       `}
     </div>
     <div class="flex justify-end mt-4 pt-3 border-t border-gray-100">
-      <button onclick="app.closeModal('alertsModal')"
-        class="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition text-sm">
-        Fermer
-      </button>
+      <button onclick="app.closeModal('alertsModal')" class="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition text-sm">Fermer</button>
     </div>
   `;
 

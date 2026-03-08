@@ -38,7 +38,11 @@ router.get('/:id', async (req, res) => {
 router.post('/', roleCheck(['admin', 'manager']), async (req, res) => {
   try {
     const db = req.app.locals.db;
-    const { name, description, category_id, price, cost, tax_rate, image_url, barcode, stock } = req.body;
+    const {
+      name, description, category_id, price, cost, tax_rate,
+      image_url, barcode, stock,
+      stock_enabled, stock_alert_threshold, stock_unit,
+    } = req.body;
 
     if (!name || !category_id || !price) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -46,9 +50,18 @@ router.post('/', roleCheck(['admin', 'manager']), async (req, res) => {
 
     const id = uuidv4();
     await db.run(
-      `INSERT INTO products (id, name, description, category_id, price, cost, tax_rate, image_url, barcode, stock)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, name, description, category_id, price, cost, tax_rate || 20, image_url, barcode, stock || 0]
+      `INSERT INTO products
+         (id, name, description, category_id, price, cost, tax_rate,
+          image_url, barcode, stock,
+          stock_enabled, stock_alert_threshold, stock_unit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id, name, description, category_id, price, cost, tax_rate || 20,
+        image_url, barcode, stock || 0,
+        stock_enabled ? 1 : 0,
+        stock_alert_threshold ?? 5,
+        stock_unit || 'pièces',
+      ]
     );
 
     const product = await db.get('SELECT * FROM products WHERE id = ?', [id]);
@@ -62,23 +75,37 @@ router.post('/', roleCheck(['admin', 'manager']), async (req, res) => {
 router.put('/:id', roleCheck(['admin', 'manager']), async (req, res) => {
   try {
     const db = req.app.locals.db;
-    const { name, description, category_id, price, cost, tax_rate, image_url, barcode, stock, active } = req.body;
+    const {
+      name, description, category_id, price, cost, tax_rate,
+      image_url, barcode, stock, active,
+      stock_enabled, stock_alert_threshold, stock_unit,
+    } = req.body;
 
     await db.run(
       `UPDATE products
-       SET name = COALESCE(?, name),
-           description = COALESCE(?, description),
-           category_id = COALESCE(?, category_id),
-           price = COALESCE(?, price),
-           cost = COALESCE(?, cost),
-           tax_rate = COALESCE(?, tax_rate),
-           image_url = COALESCE(?, image_url),
-           barcode = COALESCE(?, barcode),
-           stock = COALESCE(?, stock),
-           active = COALESCE(?, active),
-           updated_at = CURRENT_TIMESTAMP
+       SET name                  = COALESCE(?, name),
+           description           = COALESCE(?, description),
+           category_id           = COALESCE(?, category_id),
+           price                 = COALESCE(?, price),
+           cost                  = COALESCE(?, cost),
+           tax_rate              = COALESCE(?, tax_rate),
+           image_url             = COALESCE(?, image_url),
+           barcode               = COALESCE(?, barcode),
+           stock                 = COALESCE(?, stock),
+           active                = COALESCE(?, active),
+           stock_enabled         = ?,
+           stock_alert_threshold = ?,
+           stock_unit            = ?,
+           updated_at            = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [name, description, category_id, price, cost, tax_rate, image_url, barcode, stock, active, req.params.id]
+      [
+        name, description, category_id, price, cost, tax_rate,
+        image_url, barcode, stock, active,
+        stock_enabled ? 1 : 0,
+        stock_alert_threshold ?? 5,
+        stock_unit || 'pièces',
+        req.params.id,
+      ]
     );
 
     const product = await db.get('SELECT * FROM products WHERE id = ?', [req.params.id]);

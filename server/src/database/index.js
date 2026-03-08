@@ -381,6 +381,21 @@ class Database {
           column: 'country',
           ddl: "ALTER TABLE `settings` ADD COLUMN `country` VARCHAR(5) DEFAULT 'FR' COMMENT 'Code pays ISO (FR, MA, BE, CH)'",
         },
+        {
+          table: 'products',
+          column: 'stock_enabled',
+          ddl: "ALTER TABLE `products` ADD COLUMN `stock_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Activer la gestion de stock pour ce produit'",
+        },
+        {
+          table: 'products',
+          column: 'stock_alert_threshold',
+          ddl: "ALTER TABLE `products` ADD COLUMN `stock_alert_threshold` INT NOT NULL DEFAULT 5 COMMENT 'Seuil alerte stock bas'",
+        },
+        {
+          table: 'products',
+          column: 'stock_unit',
+          ddl: "ALTER TABLE `products` ADD COLUMN `stock_unit` VARCHAR(20) DEFAULT 'pièces' COMMENT 'Unité de mesure du stock'",
+        },
       ];
       for (const guard of columnGuards) {
         const [cols] = await conn.query(

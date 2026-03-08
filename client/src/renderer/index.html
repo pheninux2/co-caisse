@@ -693,6 +693,15 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Alertes stock bas -->
+                <div id="stockAlertsDashboard" class="hidden mt-4 bg-white rounded-xl shadow-sm p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-gray-800">📦 Alertes stock</h3>
+                        <button onclick="app.showSection('products')" class="text-xs text-indigo-600 hover:underline">Gérer les stocks →</button>
+                    </div>
+                    <div id="stockAlertsDashboardList" class="space-y-1.5"></div>
+                </div>
             </section>
 
             <!-- ============ PRODUCTS SECTION ============ -->
@@ -710,29 +719,89 @@
 
                 <!-- Products Panel -->
                 <div class="flex-1 flex flex-col min-h-0 bg-gray-50">
-                    <div class="p-3 bg-white border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
-                        <input type="text" id="productsSearch" placeholder="Rechercher produit..."
-                               class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                        <button onclick="app.openProductDialog()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap">
-                            + Nouveau produit
+                    <!-- Sous-onglets Produits / Stocks -->
+                    <div class="bg-white border-b border-gray-200 px-3 pt-2 flex gap-1 flex-shrink-0">
+                        <button onclick="app.showProductsTab('products')" id="ptab-products"
+                            class="products-tab px-3 py-1.5 text-sm font-medium rounded-t-lg border-b-2 border-indigo-500 text-indigo-600 bg-indigo-50 transition">
+                            📦 Produits
+                        </button>
+                        <button onclick="app.showProductsTab('stock')" id="ptab-stock"
+                            class="products-tab px-3 py-1.5 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition">
+                            📊 Stocks
                         </button>
                     </div>
-                    <div class="flex-1 overflow-y-auto p-3">
-                        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                            <table class="w-full text-sm">
-                                <thead class="bg-gray-50 sticky top-0">
-                                    <tr>
-                                        <th class="px-3 py-2 text-left font-semibold text-gray-600">Produit</th>
-                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden sm:table-cell">Catégorie</th>
-                                        <th class="px-3 py-2 text-right font-semibold text-gray-600">Prix</th>
-                                        <th class="px-3 py-2 text-center font-semibold text-gray-600 hidden md:table-cell">Stock</th>
-                                        <th class="px-3 py-2 text-center font-semibold text-gray-600 w-20">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="productsTable" class="divide-y divide-gray-100">
-                                    <tr><td colspan="5" class="text-center py-4 text-gray-400">Chargement...</td></tr>
-                                </tbody>
-                            </table>
+
+                    <!-- Panneau Produits -->
+                    <div id="ptab-panel-products" class="flex-1 flex flex-col min-h-0">
+                        <div class="p-3 bg-white border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
+                            <input type="text" id="productsSearch" placeholder="Rechercher produit..."
+                                   class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <button onclick="app.openProductDialog()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap">
+                                + Nouveau produit
+                            </button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-3">
+                            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-gray-50 sticky top-0">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left font-semibold text-gray-600">Produit</th>
+                                            <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden sm:table-cell">Catégorie</th>
+                                            <th class="px-3 py-2 text-right font-semibold text-gray-600">Prix</th>
+                                            <th class="px-3 py-2 text-center font-semibold text-gray-600 hidden md:table-cell">Stock</th>
+                                            <th class="px-3 py-2 text-center font-semibold text-gray-600 w-24">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="productsTable" class="divide-y divide-gray-100">
+                                        <tr><td colspan="5" class="text-center py-4 text-gray-400">Chargement...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panneau Stock -->
+                    <div id="ptab-panel-stock" class="hidden flex-1 flex flex-col min-h-0">
+                        <div class="p-3 bg-white border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
+                            <input type="text" id="stockSearch" placeholder="Filtrer par produit..."
+                                   class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                   oninput="app.filterStockReport(this.value)">
+                            <button onclick="app.exportStockCSV()" class="flex items-center gap-1.5 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition">
+                                ⬇️ CSV
+                            </button>
+                            <button onclick="app.loadStockReport()" class="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition">
+                                🔄 Actualiser
+                            </button>
+                        </div>
+                        <!-- Filtres statut -->
+                        <div class="px-3 py-2 bg-white border-b border-gray-100 flex gap-2 flex-shrink-0">
+                            <button onclick="app.filterStockByStatus('all')" id="stockFilter-all"
+                                class="stock-filter-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-800 text-white transition">Tous</button>
+                            <button onclick="app.filterStockByStatus('out')" id="stockFilter-out"
+                                class="stock-filter-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-red-100 transition">🔴 Rupture</button>
+                            <button onclick="app.filterStockByStatus('low')" id="stockFilter-low"
+                                class="stock-filter-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-amber-100 transition">🟡 Bas</button>
+                            <button onclick="app.filterStockByStatus('ok')" id="stockFilter-ok"
+                                class="stock-filter-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-green-100 transition">🟢 OK</button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-3">
+                            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-gray-50 sticky top-0">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left font-semibold text-gray-600">Produit</th>
+                                            <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden sm:table-cell">Catégorie</th>
+                                            <th class="px-3 py-2 text-center font-semibold text-gray-600">Stock actuel</th>
+                                            <th class="px-3 py-2 text-center font-semibold text-gray-600">Seuil alerte</th>
+                                            <th class="px-3 py-2 text-center font-semibold text-gray-600">Statut</th>
+                                            <th class="px-3 py-2 text-center font-semibold text-gray-600 w-28">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="stockReportTable" class="divide-y divide-gray-100">
+                                        <tr><td colspan="6" class="text-center py-4 text-gray-400">Chargement...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
@@ -1578,18 +1647,120 @@ SMTP_FROM="Co-Caisse" &lt;noreply@exemple.fr&gt;</pre>
                     <div>
                         <label class="text-xs font-semibold text-gray-600 mb-1 block">Taux TVA</label>
                         <select id="productTax" class="modal-input">
-                            <!-- Options injectées dynamiquement par app.buildVatOptions() -->
                             <option value="20">20 %</option>
                         </select>
                     </div>
-                    <input type="number" id="productStock" placeholder="Stock" class="modal-input">
+                    <input type="number" id="productStock" placeholder="Stock initial" class="modal-input">
                 </div>
                 <input type="text" id="productBarcode" placeholder="Code-barres" class="modal-input">
+
+                <!-- ── Gestion de stock ── -->
+                <div class="border border-gray-200 rounded-xl p-3 bg-gray-50 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-semibold text-gray-700">📦 Gestion de stock</label>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="productStockEnabled" class="sr-only peer" onchange="app.toggleStockFields(this.checked)">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:bg-indigo-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                        </label>
+                    </div>
+                    <div id="stockFieldsWrapper" class="hidden space-y-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs text-gray-500 mb-1 block">Seuil d'alerte</label>
+                                <input type="number" id="productStockThreshold" min="0" value="5" class="modal-input text-sm">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 mb-1 block">Unité</label>
+                                <select id="productStockUnit" class="modal-input text-sm">
+                                    <option value="pièces">pièces</option>
+                                    <option value="kg">kg</option>
+                                    <option value="litres">litres</option>
+                                    <option value="portions">portions</option>
+                                    <option value="boîtes">boîtes</option>
+                                    <option value="bouteilles">bouteilles</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="app.closeModal('productModal')" class="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition">Annuler</button>
                     <button type="submit" class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition">Enregistrer</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Stock Adjustment Modal -->
+    <div id="stockAdjustModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('stockAdjustModal')"></div>
+        <div class="modal-content max-w-sm">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800">📦 Ajustement de stock</h2>
+                <button onclick="app.closeModal('stockAdjustModal')" class="p-1 hover:bg-gray-100 rounded-lg text-gray-500 text-lg">✕</button>
+            </div>
+            <input type="hidden" id="stockAdjustProductId">
+            <div class="space-y-4">
+                <div class="bg-indigo-50 rounded-xl p-3">
+                    <p id="stockAdjustProductName" class="font-semibold text-gray-800"></p>
+                    <p class="text-sm text-gray-500 mt-0.5">Stock actuel : <strong id="stockAdjustCurrent" class="text-indigo-600">—</strong> <span id="stockAdjustUnit" class="text-gray-400"></span></p>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Type d'ajustement</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button" onclick="app.setStockAdjustMode('delta_plus')" id="adjBtn_delta_plus"
+                            class="stock-adj-btn py-2 text-sm rounded-lg border-2 border-green-300 bg-green-50 text-green-700 font-medium transition">
+                            ➕ Entrée
+                        </button>
+                        <button type="button" onclick="app.setStockAdjustMode('delta_minus')" id="adjBtn_delta_minus"
+                            class="stock-adj-btn py-2 text-sm rounded-lg border-2 border-red-300 bg-red-50 text-red-700 font-medium transition">
+                            ➖ Sortie
+                        </button>
+                        <button type="button" onclick="app.setStockAdjustMode('set')" id="adjBtn_set"
+                            class="stock-adj-btn py-2 text-sm rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium transition">
+                            📋 Inventaire
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 mb-1 block" id="stockAdjustQtyLabel">Quantité</label>
+                    <input type="number" id="stockAdjustQty" min="0" step="0.001" value="1" class="modal-input text-lg font-bold text-center"
+                           oninput="app._updateStockAdjustPreview()">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 mb-1 block">Motif</label>
+                    <select id="stockAdjustReason" class="modal-input">
+                        <option value="adjustment">Ajustement inventaire</option>
+                        <option value="delivery">Livraison / Réappro</option>
+                        <option value="return">Retour fournisseur</option>
+                        <option value="loss">Perte / Casse</option>
+                        <option value="other">Autre</option>
+                    </select>
+                </div>
+                <p class="text-sm text-gray-500">Nouveau stock estimé : <strong id="stockAdjustPreview" class="text-indigo-600">—</strong></p>
+            </div>
+            <div class="flex gap-3 mt-5">
+                <button onclick="app.closeModal('stockAdjustModal')" class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition">Annuler</button>
+                <button onclick="app.saveStockAdjustment()" class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-xl text-sm transition">💾 Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stock Movements Modal -->
+    <div id="stockMovementsModal" class="modal hidden">
+        <div class="modal-backdrop" onclick="app.closeModal('stockMovementsModal')"></div>
+        <div class="modal-content max-w-lg">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800">📋 Historique des mouvements</h2>
+                <button onclick="app.closeModal('stockMovementsModal')" class="p-1 hover:bg-gray-100 rounded-lg text-gray-500 text-lg">✕</button>
+            </div>
+            <p id="stockMovementsProductName" class="text-sm text-gray-500 -mt-2 mb-3"></p>
+            <div id="stockMovementsContent" class="max-h-96 overflow-y-auto space-y-1.5">
+                <p class="text-center text-gray-400 py-4">Chargement...</p>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <button onclick="app.closeModal('stockMovementsModal')" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition">Fermer</button>
+            </div>
         </div>
     </div>
 

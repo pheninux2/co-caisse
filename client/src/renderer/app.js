@@ -2458,6 +2458,38 @@ class CocaisseApp {
     document.getElementById('floorTableDetail')?.classList.add('hidden');
   }
 
+  /** Modifier une commande depuis le plan de salle (seulement si statut draft) */
+  async editOrderFromFloor(orderId) {
+    this.closeFloorTableDetail();
+    // Naviguer vers commandes et ouvrir le détail pour édition
+    this.showSection('orders');
+    await this.loadOrders();
+    // Ouvrir le détail de la commande
+    setTimeout(() => this.viewOrderDetail(orderId), 200);
+  }
+
+  /** Supprimer une commande depuis le plan de salle (seulement si statut draft) */
+  async deleteOrderFromFloor(orderId, tableLabel) {
+    try {
+      const confirmed = await this.confirm(
+        `Supprimer la commande de la table "${tableLabel}" ?`,
+        { title: 'Supprimer la commande', icon: '🗑️', type: 'danger' }
+      );
+      if (!confirmed) return;
+
+      const res = await this.apiFetch(`${API_URL}/orders/${orderId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || 'Erreur suppression');
+      }
+      this.toastSuccess('Commande supprimée');
+      this.closeFloorTableDetail();
+      await this.loadFloorPlan();
+    } catch (e) {
+      this.toastError(e.message);
+    }
+  }
+
   openNewOrderForTable(tableLabel) {
     this.closeFloorTableDetail();
     this.showSection('orders');

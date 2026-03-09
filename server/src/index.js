@@ -30,6 +30,7 @@ import rgpdRoutes        from './routes/rgpd.js'; // RGPD purge & conservation
 import setupRoutes       from './routes/setup.js'; // Wizard premier démarrage
 import tableRoutes       from './routes/tables.js';   // Plan de salle
 import stockRoutes       from './routes/stock.js';    // Gestion des stocks
+import variantRoutes     from './routes/variants.js'; // Variantes, options, sauces
 import { startPurgeJob } from './jobs/purgeJob.js'; // Cron RGPD 03h00
 
 const app  = express();
@@ -87,6 +88,7 @@ app.use(licenceMiddleware);
 // ── Routes protégées par JWT ──────────────────────────────────────────────────
 app.use('/api/products',     authMiddleware, productRoutes);
 app.use('/api/categories',   authMiddleware, categoryRoutes);
+app.use('/api/variants',     authMiddleware, variantRoutes);
 app.use('/api/transactions', authMiddleware, transactionRoutes);
 app.use('/api/orders',       authMiddleware, orderRoutes);
 app.use('/api/tables',       authMiddleware, tableRoutes);   // Plan de salle

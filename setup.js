@@ -42,12 +42,11 @@ async function checkDirectory() {
   logStep(1, 5, 'Vérification du répertoire');
 
   const requiredDirs = [
-    'src',
-    'src/server',
-    'src/ui',
-    'src/server/database',
-    'src/server/middleware',
-    'src/server/routes'
+    'client',
+    'client/src/renderer',
+    'server',
+    'server/src/routes',
+    'server/src/services',
   ];
 
   for (const dir of requiredDirs) {
@@ -144,29 +143,20 @@ function displayOptions() {
   console.log(`
 Choisissez comment démarrer l'application:
 
-  1️⃣  Mode développement complet
-      └─ Lance serveur + frontend + Electron
+  1️⃣  Mode développement complet (renderer + Electron)
       └─ Commande: npm run dev
 
-  2️⃣  Mode serveur uniquement
-      └─ Lance seulement Express.js (API sur port 5000)
-      └─ Commande: npm run server
+  2️⃣  Serveur Express uniquement (API port 5000)
+      └─ Commande: npm start --prefix server
 
-  3️⃣  Mode frontend uniquement
-      └─ Lance Webpack dev server (Frontend sur port 3000)
-      └─ Commande: npm run react-start
+  3️⃣  Renderer uniquement (webpack dev server port 3000)
+      └─ Commande: npm run renderer
 
-  4️⃣  Mode Electron standalone
-      └─ Lance l'app Electron packagée
+  4️⃣  Build production renderer
+      └─ Commande: npm run build-renderer
+
+  5️⃣  Mode Electron standalone (après build)
       └─ Commande: npm start
-
-  5️⃣  Charger données de test
-      └─ Remplit la BD avec catégories et produits
-      └─ Commande: npm run seed
-
-  6️⃣  Afficher la documentation
-      └─ Guide de démarrage rapide
-      └─ Fichier: QUICKSTART.md
 
 `);
 }

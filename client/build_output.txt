@@ -1,0 +1,39 @@
+
+> co-caisse-client@2.0.0 build-renderer
+> webpack --mode production --config webpack.config.js
+
+[dotenv@17.3.1] injecting env (1) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+asset [1m[33mapp.js[39m[22m [1m[33m278 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: main)
+asset [1m[32mindex.html[39m[22m 93.8 KiB [1m[32m[emitted][39m[22m
+runtime modules 972 bytes 5 modules
+cacheable modules 368 KiB
+  modules by path [1m./node_modules/[39m[22m 8.15 KiB
+    modules by path [1m./node_modules/style-loader/dist/runtime/*.js[39m[22m 5.84 KiB
+      [1m./node_modules/style-loader/dist/runtime/injectStylesIntoStyleTag.js[39m[22m 2.42 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+      [1m./node_modules/style-loader/dist/runtime/styleDomAPI.js[39m[22m 1.5 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+      [1m./node_modules/style-loader/dist/runtime/insertBySelector.js[39m[22m 1000 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+      + 3 modules
+    modules by path [1m./node_modules/css-loader/dist/runtime/*.js[39m[22m 2.31 KiB
+      [1m./node_modules/css-loader/dist/runtime/noSourceMaps.js[39m[22m 64 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+      [1m./node_modules/css-loader/dist/runtime/api.js[39m[22m 2.25 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  modules by path [1m./src/renderer/[39m[22m 359 KiB
+    [1m./src/renderer/app.js[39m[22m 265 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+    [1m./src/renderer/styles/main.css[39m[22m 1.24 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+    ./node_modules/css-loader/dist/cjs.js!./node_modules/postcss-loader/dist/cjs.js![1m./src/renderer/styles/main.css[39m[22m 92.9 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+
+[1m[33mWARNING[39m[22m in [1masset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
+This can impact web performance.
+Assets: 
+  app.js (278 KiB)[39m[22m
+
+[1m[33mWARNING[39m[22m in [1mentrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
+Entrypoints:
+  main (278 KiB)
+      app.js
+[39m[22m
+
+[1m[33mWARNING[39m[22m in [1mwebpack performance recommendations: 
+You can limit the size of your bundles by using import() or require.ensure to lazy load some parts of your application.
+For more info visit https://webpack.js.org/guides/code-splitting/[39m[22m
+
+webpack 5.105.2 compiled with [1m[33m3 warnings[39m[22m in 5819 ms

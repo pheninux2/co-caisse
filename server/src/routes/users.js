@@ -1,56 +1,33 @@
 /**
  * Co-Caisse — Routes utilisateurs
- * Version : 2.0.0 (bcrypt + JWT)
  *
  * POST /api/users/login  → public (pas de authMiddleware sur ce router dans index.js)
  * Toutes les autres routes → protégées par authMiddleware (déclaré dans index.js)
  */
-
 import express from 'express';
 import bcrypt  from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
 import { authMiddleware, roleCheck, generateToken } from '../middleware/auth.js';
+import { UserService } from '../services/user.service.js';
+import { requireFields } from '../validators/common.js';
 
 const router = express.Router();
 
-const BCRYPT_ROUNDS = 12;
-
 // ── POST /login — Authentification publique ───────────────────────────────────
-// Cette route N'est PAS protégée par authMiddleware.
-// index.js monte le router sur /api/users sans guard, les autres routes
-// sont protégées individuellement ci-dessous.
 router.post('/login', async (req, res) => {
   try {
-    const db = req.app.locals.db;
     const { username, password } = req.body;
+    const err = requireFields(req.body, 'username', 'password');
+    if (err) return res.status(400).json({ error: err });
 
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Nom d\'utilisateur et mot de passe requis' });
-    }
+    const user = await UserService.getForAuth(req.app.locals.db, username);
+    if (!user) return res.status(401).json({ error: 'Identifiants incorrects' });
 
-    // Récupérer l'utilisateur (avec le hash — champ password inclus)
-    const user = await db.get(
-      'SELECT * FROM `users` WHERE username = ? AND active = 1',
-      [username]
-    );
-
-    if (!user) {
-      // Réponse volontairement générique pour ne pas divulguer l'existence du compte
-      return res.status(401).json({ error: 'Identifiants incorrects' });
-    }
-
-    // Comparer le mot de passe fourni avec le hash bcrypt stocké
     const passwordValid = await bcrypt.compare(password, user.password);
-    if (!passwordValid) {
-      return res.status(401).json({ error: 'Identifiants incorrects' });
-    }
+    if (!passwordValid) return res.status(401).json({ error: 'Identifiants incorrects' });
 
-    // Générer le JWT
     const token = generateToken(user);
-
     console.log(`✅ Connexion : ${user.username} (${user.role})`);
 
-    // Répondre sans renvoyer le hash
     res.json({
       token,
       user: {
@@ -68,15 +45,9 @@ router.post('/login', async (req, res) => {
 });
 
 // ── GET /me — Profil de l'utilisateur connecté ───────────────────────────────
-// Accessible à tous les rôles authentifiés
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const db   = req.app.locals.db;
-    const user = await db.get(
-      'SELECT id, username, email, role, profile, active FROM `users` WHERE id = ? AND active = 1',
-      [req.userId]
-    );
-
+    const user = await UserService.getByIdSafe(req.app.locals.db, req.userId);
     if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé' });
     res.json(user);
   } catch (error) {
@@ -87,11 +58,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 // ── GET / — Liste tous les utilisateurs (admin) ───────────────────────────────
 router.get('/', authMiddleware, roleCheck(['admin']), async (req, res) => {
   try {
-    const db    = req.app.locals.db;
-    const users = await db.all(
-      'SELECT id, username, email, role, profile, active FROM `users` ORDER BY username'
-    );
-    res.json(users);
+    res.json(await UserService.getAll(req.app.locals.db));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -100,11 +67,7 @@ router.get('/', authMiddleware, roleCheck(['admin']), async (req, res) => {
 // ── GET /:id — Détail d'un utilisateur (admin) ────────────────────────────────
 router.get('/:id', authMiddleware, roleCheck(['admin']), async (req, res) => {
   try {
-    const db   = req.app.locals.db;
-    const user = await db.get(
-      'SELECT id, username, email, role, profile, active FROM `users` WHERE id = ?',
-      [req.params.id]
-    );
+    const user = await UserService.getById(req.app.locals.db, req.params.id);
     if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé' });
     res.json(user);
   } catch (error) {
@@ -115,26 +78,10 @@ router.get('/:id', authMiddleware, roleCheck(['admin']), async (req, res) => {
 // ── POST / — Créer un utilisateur (admin) ─────────────────────────────────────
 router.post('/', authMiddleware, roleCheck(['admin']), async (req, res) => {
   try {
-    const db = req.app.locals.db;
-    const { username, password, email, role, profile } = req.body;
+    const err = requireFields(req.body, 'username', 'password', 'role');
+    if (err) return res.status(400).json({ error: err });
 
-    if (!username || !password || !role) {
-      return res.status(400).json({ error: 'Champs requis manquants : username, password, role' });
-    }
-
-    const id   = uuidv4();
-    const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-
-    await db.run(
-      'INSERT INTO `users` (id, username, password, email, role, profile) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, username, hash, email, role, profile || 'standard']
-    );
-
-    const user = await db.get(
-      'SELECT id, username, email, role, profile, active FROM `users` WHERE id = ?',
-      [id]
-    );
-    res.status(201).json(user);
+    res.status(201).json(await UserService.create(req.app.locals.db, req.body));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -143,39 +90,7 @@ router.post('/', authMiddleware, roleCheck(['admin']), async (req, res) => {
 // ── PUT /:id — Modifier un utilisateur (admin) ────────────────────────────────
 router.put('/:id', authMiddleware, roleCheck(['admin']), async (req, res) => {
   try {
-    const db = req.app.locals.db;
-    const { email, role, profile, active, password } = req.body;
-
-    // Si un nouveau mot de passe est fourni, le hasher
-    if (password) {
-      const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-      await db.run(
-        `UPDATE \`users\` SET
-           email    = COALESCE(?, email),
-           role     = COALESCE(?, role),
-           profile  = COALESCE(?, profile),
-           active   = COALESCE(?, active),
-           password = ?
-         WHERE id = ?`,
-        [email, role, profile, active, hash, req.params.id]
-      );
-    } else {
-      await db.run(
-        `UPDATE \`users\` SET
-           email   = COALESCE(?, email),
-           role    = COALESCE(?, role),
-           profile = COALESCE(?, profile),
-           active  = COALESCE(?, active)
-         WHERE id = ?`,
-        [email, role, profile, active, req.params.id]
-      );
-    }
-
-    const user = await db.get(
-      'SELECT id, username, email, role, profile, active FROM `users` WHERE id = ?',
-      [req.params.id]
-    );
-    res.json(user);
+    res.json(await UserService.update(req.app.locals.db, req.params.id, req.body));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -184,15 +99,11 @@ router.put('/:id', authMiddleware, roleCheck(['admin']), async (req, res) => {
 // ── DELETE /:id — Supprimer un utilisateur (admin) ────────────────────────────
 router.delete('/:id', authMiddleware, roleCheck(['admin']), async (req, res) => {
   try {
-    const db = req.app.locals.db;
-    await db.run('DELETE FROM `users` WHERE id = ?', [req.params.id]);
+    await UserService.remove(req.app.locals.db, req.params.id);
     res.json({ message: 'Utilisateur supprimé avec succès' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-
-
 export default router;
-

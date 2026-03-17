@@ -1,15 +1,14 @@
 import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
 import { roleCheck } from '../middleware/auth.js';
+import { CategoryService } from '../services/category.service.js';
+import { requireFields } from '../validators/common.js';
 
 const router = express.Router();
 
 // Get all categories
 router.get('/', async (req, res) => {
   try {
-    const db = req.app.locals.db;
-    const categories = await db.all('SELECT * FROM categories WHERE active = 1 ORDER BY order_index, name');
-    res.json(categories);
+    res.json(await CategoryService.getAll(req.app.locals.db));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -18,11 +17,8 @@ router.get('/', async (req, res) => {
 // Get category by ID
 router.get('/:id', async (req, res) => {
   try {
-    const db = req.app.locals.db;
-    const category = await db.get('SELECT * FROM categories WHERE id = ?', [req.params.id]);
-    if (!category) {
-      return res.status(404).json({ error: 'Category not found' });
-    }
+    const category = await CategoryService.getById(req.app.locals.db, req.params.id);
+    if (!category) return res.status(404).json({ error: 'Category not found' });
     res.json(category);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -32,22 +28,10 @@ router.get('/:id', async (req, res) => {
 // Create category
 router.post('/', roleCheck(['admin', 'manager']), async (req, res) => {
   try {
-    const db = req.app.locals.db;
-    const { name, description, image_url, color, order_index } = req.body;
+    const err = requireFields(req.body, 'name');
+    if (err) return res.status(400).json({ error: err });
 
-    if (!name) {
-      return res.status(400).json({ error: 'Category name is required' });
-    }
-
-    const id = uuidv4();
-    await db.run(
-      `INSERT INTO categories (id, name, description, image_url, color, order_index)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, name, description, image_url, color, order_index || 0]
-    );
-
-    const category = await db.get('SELECT * FROM categories WHERE id = ?', [id]);
-    res.status(201).json(category);
+    res.status(201).json(await CategoryService.create(req.app.locals.db, req.body));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -56,24 +40,7 @@ router.post('/', roleCheck(['admin', 'manager']), async (req, res) => {
 // Update category
 router.put('/:id', roleCheck(['admin', 'manager']), async (req, res) => {
   try {
-    const db = req.app.locals.db;
-    const { name, description, image_url, color, order_index, active } = req.body;
-
-    await db.run(
-      `UPDATE categories
-       SET name = COALESCE(?, name),
-           description = COALESCE(?, description),
-           image_url = COALESCE(?, image_url),
-           color = COALESCE(?, color),
-           order_index = COALESCE(?, order_index),
-           active = COALESCE(?, active),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-      [name, description, image_url, color, order_index, active, req.params.id]
-    );
-
-    const category = await db.get('SELECT * FROM categories WHERE id = ?', [req.params.id]);
-    res.json(category);
+    res.json(await CategoryService.update(req.app.locals.db, req.params.id, req.body));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -82,8 +49,7 @@ router.put('/:id', roleCheck(['admin', 'manager']), async (req, res) => {
 // Delete category
 router.delete('/:id', roleCheck(['admin']), async (req, res) => {
   try {
-    const db = req.app.locals.db;
-    await db.run('DELETE FROM categories WHERE id = ?', [req.params.id]);
+    await CategoryService.remove(req.app.locals.db, req.params.id);
     res.json({ message: 'Category deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -91,4 +57,3 @@ router.delete('/:id', roleCheck(['admin']), async (req, res) => {
 });
 
 export default router;
-

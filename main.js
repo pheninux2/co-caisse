@@ -9,7 +9,7 @@
 // ── dotenv doit être le premier require ───────────────────────────────────────
 require('dotenv').config();
 
-const { app, BrowserWindow, Menu, ipcMain, screen, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen, dialog, shell } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
@@ -54,7 +54,7 @@ function createWindow() {
 
   const startUrl = isDev
     ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, 'dist/index.html')}`;
+    : `file://${path.join(__dirname, 'client/dist/index.html')}`;
 
   mainWindow.loadURL(startUrl);
 
@@ -99,8 +99,24 @@ app.on('activate', () => {
 });
 
 // ── IPC : version de l'application ───────────────────────────────────────────
-// Appelé depuis preload via ipcRenderer.invoke('get-version')
 ipcMain.handle('get-version', () => app.getVersion());
+
+// ── IPC : ouvrir un lien externe (mailto:, https://) via le shell OS ─────────
+ipcMain.handle('open-external', async (_event, url) => {
+  try {
+    const allowed = ['mailto:', 'https:', 'http:'];
+    const scheme  = new URL(url).protocol;
+    if (!allowed.includes(scheme)) {
+      console.warn('[open-external] Schéma refusé :', scheme);
+      return { success: false, reason: 'Schéma non autorisé' };
+    }
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (e) {
+    console.error('[open-external]', e.message);
+    return { success: false, reason: e.message };
+  }
+});
 
 // ── IPC : impression du ticket ────────────────────────────────────────────────
 ipcMain.handle('print-ticket', async (_event, ticketHtml) => {

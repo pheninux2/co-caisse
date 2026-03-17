@@ -2,6 +2,11 @@ import { OrderService } from '../../services/order.service.js';
 
 export const OrdersMethods = {
 
+  startNewOrder() {
+    this.showSection('pos');
+    setTimeout(() => document.getElementById('searchInput')?.focus(), 150);
+  },
+
   async loadOrders() {
     try {
       const status   = this.currentOrderFilter === 'all' ? '' : this.currentOrderFilter;
@@ -125,16 +130,16 @@ export const OrdersMethods = {
     this.openModal('orderModal');
   },
 
-  async saveOrder(event) {
+  async saveOrder(event, force = false) {
     event.preventDefault();
 
     try {
-      const orderId       = document.getElementById('orderId').value;
-      const table_number  = document.getElementById('orderTableNumber').value;
-      const order_type    = document.getElementById('orderType').value;
-      const customer_name = document.getElementById('orderCustomerName').value;
+      const orderId        = document.getElementById('orderId').value;
+      const table_number   = document.getElementById('orderTableNumber').value;
+      const order_type     = document.getElementById('orderType').value;
+      const customer_name  = document.getElementById('orderCustomerName').value;
       const customer_phone = document.getElementById('orderCustomerPhone').value;
-      const notes         = document.getElementById('orderNotes').value;
+      const notes          = document.getElementById('orderNotes').value;
 
       if (this.cart.length === 0) {
         this.toastWarning('Le panier est vide');
@@ -147,7 +152,7 @@ export const OrdersMethods = {
       const total    = subtotal + tax - discount;
 
       const orderData = {
-        table_number, order_type,
+        table_number, order_type, force,
         items: this.cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price, total: item.price * item.quantity })),
         subtotal, tax, discount, total, customer_name, customer_phone, notes,
       };
@@ -163,8 +168,82 @@ export const OrdersMethods = {
       this.toastSuccess(`Commande ${order.order_number} enregistrée !`);
       this.showSection('orders');
     } catch (error) {
+      // ── 409 : table occupée — proposer les options à l'utilisateur ──────────
+      if (error.status === 409 && error.conflict) {
+        this._showTableConflictDialog(error.conflict, event);
+        return;
+      }
       console.error('Error saving order:', error);
       this.toastError('Erreur lors de l\'enregistrement de la commande');
+    }
+  },
+
+  _showTableConflictDialog(existing, originalEvent) {
+    const statusLabels = { draft: 'En attente de validation', in_kitchen: 'En cuisine', ready: 'Prête', served: 'Servie' };
+    const statusIcons  = { draft: '⏳', in_kitchen: '🔥', ready: '✨', served: '🍽️' };
+    const statusClass  = { draft: 'bg-amber-50 border-amber-300 text-amber-800', in_kitchen: 'bg-orange-50 border-orange-300 text-orange-800', ready: 'bg-green-50 border-green-300 text-green-800', served: 'bg-blue-50 border-blue-300 text-blue-800' };
+
+    const tableNumber = document.getElementById('orderTableNumber')?.value || '';
+    const label       = statusLabels[existing.status] || existing.status;
+    const icon        = statusIcons[existing.status]  || '📋';
+    const cls         = statusClass[existing.status]  || 'bg-gray-50 border-gray-300 text-gray-800';
+
+    // Utiliser un modal dédié pour ne pas détruire les éléments de #confirmDialog
+    // utilisés par Modal.confirm() (confirmTitle, confirmMessage, etc.)
+    let dialog = document.getElementById('tableConflictModal');
+    if (!dialog) {
+      dialog = document.createElement('div');
+      dialog.id = 'tableConflictModal';
+      dialog.className = 'modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-4';
+      document.body.appendChild(dialog);
+    }
+
+    dialog.innerHTML = `
+      <div class="modal-backdrop absolute inset-0 bg-black/40" onclick="app.closeModal('tableConflictModal')"></div>
+      <div class="modal-content relative max-w-md w-full bg-white rounded-2xl shadow-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl flex-shrink-0">⚠️</div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-800">Table déjà occupée</h2>
+            <p class="text-sm text-gray-500">📍 ${this._esc(tableNumber)}</p>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl border-2 ${cls} mb-4">
+          <p class="font-semibold text-sm">${icon} ${this._esc(existing.order_number)} — ${label}</p>
+          <p class="text-xs mt-1 opacity-80">Par ${this._esc(existing.cashier_name)} · ${existing.total.toFixed(2)} €</p>
+          <p class="text-xs mt-0.5 opacity-70">${new Date(existing.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+        </div>
+
+        <p class="text-sm text-gray-600 mb-5">Voulez-vous voir cette commande ou créer quand même une nouvelle commande sur cette table ?</p>
+
+        <div class="flex flex-col gap-2">
+          <button onclick="app.closeModal('tableConflictModal'); app.viewOrderDetail('${existing.id}')"
+            class="w-full py-2.5 px-4 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl transition text-sm">
+            👁️ Voir la commande en cours
+          </button>
+          <button onclick="app._forceCreateOrder()"
+            class="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-xl transition text-sm">
+            ➕ Créer quand même une nouvelle commande
+          </button>
+          <button onclick="app.closeModal('tableConflictModal')"
+            class="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition text-sm">
+            Annuler
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Stocker l'event pour pouvoir le relancer avec force:true
+    this._pendingOrderEvent = originalEvent;
+    this.openModal('tableConflictModal');
+  },
+
+  _forceCreateOrder() {
+    this.closeModal('tableConflictModal');
+    if (this._pendingOrderEvent) {
+      this.saveOrder(this._pendingOrderEvent, true);
+      this._pendingOrderEvent = null;
     }
   },
 

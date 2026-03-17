@@ -9,6 +9,8 @@
     "dev": "node --watch src/index.js",
     "seed": "node src/database/seed.js",
     "schema": "mysql -u $DB_USER -p$DB_PASS $DB_NAME < src/database/schema.sql",
+    "migrations:reset": "node src/database/reset-migrations.js",
+    "migrations:reset:full": "node src/database/reset-migrations.js --full",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

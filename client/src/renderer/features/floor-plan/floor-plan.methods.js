@@ -152,27 +152,56 @@ export const FloorPlanMethods = {
           <p class="text-xs text-gray-400 mt-1">${table.shape === 'circle' ? '⭕ Table ronde' : '⬛ Table rectangulaire'}</p>
         </div>`;
     } else {
-      const openedAt = table.opened_at ? new Date(table.opened_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
-      const elapsed  = table.elapsed_minutes != null ? `${table.elapsed_minutes} min ${isLate ? '⚠️' : ''}` : '—';
-      const total    = table.total_amount    != null ? table.total_amount.toFixed(2) + ' €' : '—';
+      const allOrders  = Array.isArray(table.orders) && table.orders.length ? table.orders : null;
+      const statusBadgeClass = {
+        in_kitchen: 'bg-red-100 text-red-700',
+        ready:      'bg-orange-100 text-orange-700',
+        served:     'bg-blue-100 text-blue-700',
+        draft:      'bg-yellow-100 text-yellow-700',
+      }[table.computed_status] || 'bg-yellow-100 text-yellow-700';
+
+      const orderStatusLabels = { draft:'⏳ Brouillon', validated:'📋 Validée', in_kitchen:'🍳 En cuisine', ready:'🔔 Prête', served:'🍽️ Servie' };
+
+      const ordersHtml = allOrders
+        ? allOrders.map(o => {
+            const oOpenedAt = o.opened_at ? new Date(o.opened_at).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }) : '—';
+            const oElapsed  = o.elapsed_minutes != null ? `${o.elapsed_minutes} min${o.elapsed_minutes >= WARN_MINUTES ? ' ⚠️' : ''}` : '—';
+            const oTotal    = o.total != null ? o.total.toFixed(2) + ' €' : '—';
+            const oStatus   = orderStatusLabels[o.status] || o.status;
+            return `
+              <div class="border border-gray-100 rounded-lg p-2 space-y-1 text-xs">
+                <div class="flex items-center justify-between">
+                  <span class="font-mono font-semibold text-gray-700">#${o.order_number ? o.order_number.slice(-5) : '—'}</span>
+                  <span class="text-gray-500">${oStatus}</span>
+                </div>
+                ${o.waiter_name ? `<div class="flex justify-between"><span class="text-gray-400">👤</span><span>${this._esc(o.waiter_name)}</span></div>` : ''}
+                <div class="flex justify-between"><span class="text-gray-400">🕐 ${oOpenedAt}</span><span class="${o.elapsed_minutes >= WARN_MINUTES ? 'text-red-600 font-semibold' : 'text-gray-500'}">⏱ ${oElapsed}</span></div>
+                <div class="flex justify-between"><span class="text-gray-400">🍽️ ${o.item_count} plat${o.item_count !== 1 ? 's' : ''}</span><span class="font-semibold">💶 ${oTotal}</span></div>
+              </div>`;
+          }).join('')
+        : (() => {
+            const openedAt = table.opened_at ? new Date(table.opened_at).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }) : '—';
+            const elapsed  = table.elapsed_minutes != null ? `${table.elapsed_minutes} min${isLate ? ' ⚠️' : ''}` : '—';
+            const total    = table.total_amount    != null ? table.total_amount.toFixed(2) + ' €' : '—';
+            return `
+              <div class="space-y-1.5 text-xs">
+                ${table.waiter_name ? `<div class="flex justify-between"><span class="text-gray-500">👤 Serveur</span><strong>${this._esc(table.waiter_name)}</strong></div>` : ''}
+                <div class="flex justify-between"><span class="text-gray-500">🕐 Ouverture</span><strong>${openedAt}</strong></div>
+                <div class="flex justify-between"><span class="text-gray-500">⏱ Durée</span><strong class="${isLate ? 'text-red-600' : ''}">${elapsed}</strong></div>
+                ${table.item_count ? `<div class="flex justify-between"><span class="text-gray-500">🍽️ Articles</span><strong>${table.item_count}</strong></div>` : ''}
+                <div class="flex justify-between"><span class="text-gray-500">💶 Total</span><strong>${total}</strong></div>
+                ${table.order_number ? `<div class="flex justify-between"><span class="text-gray-500">📋</span><strong class="font-mono">#${table.order_number.slice(-5)}</strong></div>` : ''}
+              </div>`;
+          })();
+
       popover.innerHTML = `
         <div class="overflow-hidden rounded-xl">
           <div class="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
             <span class="font-bold text-gray-800">🪑 Table ${this._esc(table.label)}</span>
-            <span class="text-xs font-medium px-2 py-0.5 rounded-full ${
-              table.computed_status === 'in_kitchen' ? 'bg-red-100 text-red-700' :
-              table.computed_status === 'ready'      ? 'bg-orange-100 text-orange-700' :
-              table.computed_status === 'served'     ? 'bg-blue-100 text-blue-700' :
-                                                       'bg-yellow-100 text-yellow-700'
-            }">${statusLabel}</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-full ${statusBadgeClass}">${statusLabel}${allOrders && allOrders.length > 1 ? ` · ${allOrders.length}` : ''}</span>
           </div>
-          <div class="p-3 space-y-1.5 text-xs">
-            ${table.waiter_name ? `<div class="flex justify-between"><span class="text-gray-500">👤 Serveur</span><strong>${this._esc(table.waiter_name)}</strong></div>` : ''}
-            <div class="flex justify-between"><span class="text-gray-500">🕐 Ouverture</span><strong>${openedAt}</strong></div>
-            <div class="flex justify-between"><span class="text-gray-500">⏱ Durée</span><strong class="${isLate ? 'text-red-600' : ''}">${elapsed}</strong></div>
-            ${table.item_count ? `<div class="flex justify-between"><span class="text-gray-500">🍽️ Articles</span><strong>${table.item_count} plat${table.item_count > 1 ? 's' : ''}</strong></div>` : ''}
-            <div class="flex justify-between"><span class="text-gray-500">💶 Total</span><strong>${total}</strong></div>
-            ${table.order_number ? `<div class="flex justify-between"><span class="text-gray-500">📋 Commande</span><strong class="font-mono">#${table.order_number.slice(-5)}</strong></div>` : ''}
+          <div class="p-3 space-y-2 max-h-72 overflow-y-auto">
+            ${ordersHtml}
           </div>
         </div>`;
     }
@@ -527,25 +556,93 @@ export const FloorPlanMethods = {
           ${adminButtons}
         </div>`;
     } else {
-      const statusLabels = { draft:'📋 En attente', in_kitchen:'🍳 En cuisine', ready:'🔔 Prête', served:'🍽️ Servie' };
-      const statusLabel  = statusLabels[table.computed_status] || table.order_status;
-      const elapsed      = table.elapsed_minutes != null ? `${table.elapsed_minutes} min` : '—';
-      const openedAt     = table.opened_at ? new Date(table.opened_at).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }) : '—';
+      const allOrders = Array.isArray(table.orders) && table.orders.length
+        ? table.orders
+        : [{
+            id:              table.order_id,
+            order_number:    table.order_number,
+            status:          table.order_status,
+            total:           table.order_total,
+            opened_at:       table.opened_at,
+            waiter_name:     table.waiter_name,
+            item_count:      table.item_count,
+            elapsed_minutes: table.elapsed_minutes,
+          }];
+
+      const STATUS_CFG = {
+        draft:      { label: 'En attente',    icon: '📋', bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-800', ring: 'ring-yellow-300' },
+        validated:  { label: 'Validée',       icon: '✅', bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-800', ring: 'ring-yellow-300' },
+        in_kitchen: { label: 'En cuisine',    icon: '🍳', bar: 'bg-red-500',    badge: 'bg-red-100 text-red-800',      ring: 'ring-red-300'    },
+        ready:      { label: 'Prête',         icon: '🔔', bar: 'bg-orange-400', badge: 'bg-orange-100 text-orange-800',ring: 'ring-orange-300' },
+        served:     { label: 'Servie',        icon: '🍽️', bar: 'bg-blue-400',   badge: 'bg-blue-100 text-blue-800',    ring: 'ring-blue-300'   },
+      };
+      const WARN = 60;
+
+      const accordionItems = allOrders.map((o, idx) => {
+        const cfg      = STATUS_CFG[o.status] || STATUS_CFG.draft;
+        const openedAt = o.opened_at ? new Date(o.opened_at).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }) : '—';
+        const elapsed  = o.elapsed_minutes != null ? o.elapsed_minutes : null;
+        const isLate   = elapsed != null && elapsed >= WARN;
+        const elapsedStr = elapsed != null ? `${elapsed} min${isLate ? ' ⚠️' : ''}` : '—';
+        const totalStr = o.total != null ? o.total.toFixed(2) + ' €' : '—';
+        const ref      = o.order_number ? '#' + o.order_number.slice(-6) : '—';
+
+        return `
+          <details class="group rounded-2xl overflow-hidden ring-1 ${cfg.ring} bg-white shadow-sm" ${idx === 0 ? 'open' : ''}>
+            <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer select-none list-none hover:bg-gray-50 transition-colors">
+              <!-- barre colorée -->
+              <span class="w-1 self-stretch rounded-full ${cfg.bar} shrink-0"></span>
+              <!-- icône statut -->
+              <span class="text-lg shrink-0">${cfg.icon}</span>
+              <!-- infos principales -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="font-mono font-bold text-gray-800 text-sm">${ref}</span>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.badge}">${cfg.label}</span>
+                </div>
+                <div class="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                  <span>🕐 ${openedAt}</span>
+                  <span class="${isLate ? 'text-red-600 font-semibold' : ''}">⏱ ${elapsedStr}</span>
+                  <span class="ml-auto font-semibold text-gray-700">💶 ${totalStr}</span>
+                </div>
+              </div>
+              <!-- chevron -->
+              <svg class="w-4 h-4 text-gray-400 shrink-0 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </summary>
+
+            <!-- Corps accordéon -->
+            <div class="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3">
+              <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mt-2">
+                ${o.waiter_name ? `
+                <dt class="text-gray-400 flex items-center gap-1">👤 Serveur</dt>
+                <dd class="font-semibold text-gray-700 text-right">${this._esc(o.waiter_name)}</dd>` : ''}
+                <dt class="text-gray-400 flex items-center gap-1">🕐 Ouverture</dt>
+                <dd class="font-semibold text-gray-700 text-right">${openedAt}</dd>
+                <dt class="text-gray-400 flex items-center gap-1">⏱ Durée</dt>
+                <dd class="font-semibold text-right ${isLate ? 'text-red-600' : 'text-gray-700'}">${elapsedStr}</dd>
+                <dt class="text-gray-400 flex items-center gap-1">🍽️ Articles</dt>
+                <dd class="font-semibold text-gray-700 text-right">${o.item_count ?? 0} plat${(o.item_count ?? 0) !== 1 ? 's' : ''}</dd>
+                <dt class="text-gray-400 flex items-center gap-1">💶 Total</dt>
+                <dd class="font-bold text-gray-800 text-right">${totalStr}</dd>
+              </dl>
+              <button onclick="app.viewOrderDetail('${o.id}')"
+                class="w-full py-2 bg-indigo-500 hover:bg-indigo-600 active:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2">
+                📋 Ouvrir la commande
+              </button>
+            </div>
+          </details>`;
+      }).join('');
+
       contentEl.innerHTML = `
-        <div class="space-y-3">
-          <div class="p-3 bg-gray-50 rounded-xl space-y-1.5 text-sm">
-            <p><span class="text-gray-500">Commande :</span> <strong>${table.order_number || '—'}</strong></p>
-            <p><span class="text-gray-500">Statut :</span> <strong>${statusLabel}</strong></p>
-            ${table.waiter_name ? `<p><span class="text-gray-500">Serveur :</span> <strong>${this._esc(table.waiter_name)}</strong></p>` : ''}
-            <p><span class="text-gray-500">Ouverture :</span> <strong>${openedAt}</strong></p>
-            <p><span class="text-gray-500">Durée :</span> <strong>${elapsed}</strong></p>
-            ${table.item_count ? `<p><span class="text-gray-500">Articles :</span> <strong>${table.item_count}</strong></p>` : ''}
-            <p><span class="text-gray-500">Total :</span> <strong>${table.order_total ? table.order_total.toFixed(2) + ' €' : '—'}</strong></p>
-          </div>
-          <button onclick="app.viewOrderDetail('${table.order_id}')"
-            class="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-xl text-sm transition">
-            📋 Ouvrir la commande
-          </button>
+        <div class="space-y-2">
+          ${allOrders.length > 1 ? `
+          <div class="flex items-center gap-2 px-1 mb-1">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${allOrders.length} commandes actives</span>
+            <span class="flex-1 h-px bg-gray-200"></span>
+          </div>` : ''}
+          ${accordionItems}
           ${adminButtons}
         </div>`;
     }

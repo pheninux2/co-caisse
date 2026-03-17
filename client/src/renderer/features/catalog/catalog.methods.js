@@ -14,6 +14,7 @@ export const CatalogMethods = {
         this.loadCategories(),
         this.loadProducts(),
         this.loadDashboard(),
+        SettingsService.get().then(s => { if (s) this.settings = s; }).catch(() => {}),
       ]);
     } catch (error) {
       console.error('Error loading data:', error);

@@ -50,17 +50,18 @@ export const TableService = {
     if (!tables.length) return [];
 
     return Promise.all(tables.map(async (table) => {
-      const order = await db.get(
+      const activeOrders = await db.all(
         `SELECT o.id, o.order_number, o.status, o.total, o.created_at,
                 o.items, u.username AS waiter_name
          FROM \`orders\` o
          LEFT JOIN \`users\` u ON u.id = o.created_by
          WHERE o.table_number = ?
            AND o.status NOT IN ('paid', 'cancelled')
-         ORDER BY o.created_at DESC
-         LIMIT 1`,
+         ORDER BY o.created_at DESC`,
         [table.label]
       );
+
+      const order = activeOrders[0] || null; // commande la plus récente = référence
 
       let computed_status = 'free';
       if (order) {
@@ -85,6 +86,27 @@ export const TableService = {
         } catch (_) {}
       }
 
+      // Enrichir chaque commande pour l'affichage popover
+      const orders = activeOrders.map(o => {
+        let o_item_count = 0;
+        if (o.items) {
+          try {
+            const it = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+            o_item_count = Array.isArray(it) ? it.reduce((s, i) => s + (i.quantity || 1), 0) : 0;
+          } catch (_) {}
+        }
+        return {
+          id:              o.id,
+          order_number:    o.order_number,
+          status:          o.status,
+          total:           o.total,
+          opened_at:       o.created_at,
+          waiter_name:     o.waiter_name,
+          item_count:      o_item_count,
+          elapsed_minutes: o.created_at ? Math.floor((Date.now() - new Date(o.created_at).getTime()) / 60000) : null,
+        };
+      });
+
       return {
         ...table,
         computed_status,
@@ -98,6 +120,7 @@ export const TableService = {
         opened_at:      order?.created_at   || null,
         item_count,
         elapsed_minutes,
+        orders, // toutes les commandes actives de la table
       };
     }));
   },

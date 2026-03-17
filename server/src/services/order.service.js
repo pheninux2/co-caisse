@@ -12,11 +12,27 @@ function generateOrderNumber() {
 
 export const OrderService = {
 
+  // ── Retourne la commande active d'une table, ou null ──────────────────────────
+  async getActiveByTable(db, table_number) {
+    if (!table_number) return null;
+    return db.get(`
+      SELECT o.id, o.order_number, o.status, o.total, o.created_at,
+             COALESCE(u.username, 'Inconnu') AS cashier_name
+      FROM \`orders\` o
+      LEFT JOIN \`users\` u ON o.created_by = u.id
+      WHERE o.table_number = ?
+        AND o.status IN ('draft','in_kitchen','ready','served')
+      ORDER BY o.created_at DESC
+      LIMIT 1
+    `, [table_number]);
+  },
+
   async create(db, data, userId) {
     const {
       table_number, order_type = 'dine_in', items,
       subtotal, tax, discount, total,
       customer_name, customer_phone, notes,
+      force = false,
     } = data;
 
     const userExists = await db.get('SELECT id FROM `users` WHERE id = ?', [userId]);
@@ -24,6 +40,18 @@ export const OrderService = {
       const err = new Error('Session expirée — veuillez vous reconnecter');
       err.status = 401;
       throw err;
+    }
+
+    // ── Contrôle table occupée (uniquement sur place, sauf si force:true) ──────
+    if (table_number && order_type === 'dine_in' && !force) {
+      const existing = await this.getActiveByTable(db, table_number);
+      if (existing) {
+        const statusLabels = { draft: 'En attente', in_kitchen: 'En cuisine', ready: 'Prête', served: 'Servie' };
+        const err = new Error(`Table ${table_number} occupée — commande ${existing.order_number} (${statusLabels[existing.status] || existing.status}) en cours`);
+        err.status = 409;
+        err.conflict = existing;
+        throw err;
+      }
     }
 
     const id           = uuidv4();
@@ -210,11 +238,24 @@ export const OrderService = {
           return null;
       }
 
+      // ── Normalisation UTC ──────────────────────────────────────────────────
+      // Le pool mysql2 est configuré avec timezone:'Z' → les objets Date retournés
+      // sont déjà en UTC. .toISOString() donne donc la valeur correcte directement.
+      // Pour les strings brutes (cas sans dateStrings:false), on suffixe 'Z' pour
+      // forcer l'interprétation UTC (sans ça JS traiterait la string comme heure locale).
       let isoDate;
       if (statusDateStr instanceof Date) {
         isoDate = statusDateStr.toISOString();
+
+        // ── Diagnostic temporaire ──────────────────────────────────────────
+        console.log('[ALERT TZ] created_at brut (DB)  :', statusDateStr);
+        console.log('[ALERT TZ] isoDate UTC           :', isoDate);
+        console.log('[ALERT TZ] Date.now() serveur    :', new Date().toISOString());
+        console.log('[ALERT TZ] Delta (ms)            :', Date.now() - new Date(isoDate).getTime());
+        // ──────────────────────────────────────────────────────────────────
       } else {
-        isoDate = new Date(String(statusDateStr).replace(' ', 'T')).toISOString();
+        // String brute "YYYY-MM-DD HH:MM:SS" sans TZ → suffixer 'Z' pour UTC
+        isoDate = new Date(String(statusDateStr).replace(' ', 'T') + 'Z').toISOString();
       }
 
       return {

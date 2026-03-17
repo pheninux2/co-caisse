@@ -23,7 +23,12 @@ const OrderService = {
       body: JSON.stringify(data),
     });
     const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'Erreur création commande');
+    if (!res.ok) {
+      const err = new Error(body.error || 'Erreur création commande');
+      err.status   = res.status;
+      err.conflict = body.conflict || null; // présent si 409
+      throw err;
+    }
     return body;
   },
 
@@ -74,6 +79,12 @@ const OrderService = {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Erreur paiement commande');
     return body; // { transaction }
+  },
+
+  async getActiveByTable(table_number) {
+    const res  = await api.fetch(`${API_URL}/orders/table/${encodeURIComponent(table_number)}/active`);
+    const data = await res.json();
+    return data; // { active: bool, order: {...} | null }
   },
 
   async getAlerts() {

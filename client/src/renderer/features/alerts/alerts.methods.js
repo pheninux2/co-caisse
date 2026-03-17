@@ -23,10 +23,20 @@ export const AlertsMethods = {
   // Calcule le nombre de minutes écoulées depuis status_since
   _elapsedMin(status_since) {
     if (!status_since) return 0;
-    const since = new Date(status_since);
-    const now   = Date.now();
+    const since  = new Date(status_since);
+    const now    = Date.now();
     const diffMs = now - since.getTime();
-    const mins = Math.floor(diffMs / 60000);
+    const mins   = Math.floor(diffMs / 60000);
+
+    // ── Diagnostic temporaire ───────────────────────────────────────────
+    if (mins > 5) {
+      console.log('[ALERT TZ] status_since reçu     :', status_since);
+      console.log('[ALERT TZ] since.toISOString()   :', since.toISOString());
+      console.log('[ALERT TZ] Date (client) now     :', new Date().toISOString());
+      console.log('[ALERT TZ] elapsed calculé (min) :', mins);
+    }
+    // ───────────────────────────────────────────────────────────────────
+
     return Math.max(0, mins);
   },
 

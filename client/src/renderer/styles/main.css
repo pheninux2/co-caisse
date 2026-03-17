@@ -536,6 +536,12 @@ input:focus, select:focus, textarea:focus {
   animation: toast-out 0.3s ease-in forwards;
 }
 
+/* ====== ORDER DETAIL MODAL — scrollable body ====== */
+#orderDetailModal .modal-content {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
 /* ====== CONFIRM DIALOG ====== */
 #confirmDialog .modal-content {
   animation: confirm-in 0.2s ease-out;

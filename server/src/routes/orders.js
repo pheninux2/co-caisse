@@ -8,6 +8,16 @@ import { requireFields } from '../validators/common.js';
 
 const router = express.Router();
 
+// ── GET /table/:table_number/active — Vérifier si une table a une commande active
+router.get('/table/:table_number/active', roleCheck(['admin', 'cashier']), async (req, res) => {
+  try {
+    const order = await OrderService.getActiveByTable(req.app.locals.db, req.params.table_number);
+    res.json({ active: !!order, order: order || null });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── POST / — Créer une commande ───────────────────────────────────────────────
 router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
@@ -18,6 +28,10 @@ router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
     res.status(201).json(order);
   } catch (error) {
     console.error('[orders POST]', error.message);
+    // 409 = table occupée → renvoyer les détails de la commande en conflit
+    if (error.status === 409) {
+      return res.status(409).json({ error: error.message, conflict: error.conflict });
+    }
     res.status(error.status || 500).json({ error: error.message });
   }
 });

@@ -33,7 +33,8 @@ const pool = mysql.createPool({
   connectionLimit:    10,
   queueLimit:         0,
   charset:            'utf8mb4',
-  timezone:           'local',
+  timezone:           'Z',    // UTC — MariaDB stocke les DATETIME en UTC (CURRENT_TIMESTAMP),
+                              // 'local' causait un décalage de +1h (UTC+1 France) sur tous les timestamps.
 });
 
 // ──────────────────────────────────────────────

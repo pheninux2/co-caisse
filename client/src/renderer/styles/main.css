@@ -632,6 +632,10 @@ input:focus, select:focus, textarea:focus {
   @apply bg-emerald-100 text-emerald-700;
 }
 
+.order-status-cancelled {
+  @apply bg-red-100 text-red-700;
+}
+
 .order-item {
   @apply flex items-center justify-between py-2 text-sm;
 }

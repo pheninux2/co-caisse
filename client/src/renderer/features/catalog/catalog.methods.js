@@ -2,6 +2,7 @@ import { ProductService }  from '../../services/product.service.js';
 import { CategoryService } from '../../services/category.service.js';
 import { UserService }     from '../../services/user.service.js';
 import { SettingsService } from '../../services/settings.service.js';
+import { TableService }    from '../../services/table.service.js';
 
 export const CatalogMethods = {
 
@@ -434,22 +435,112 @@ export const CatalogMethods = {
     document.getElementById('userEmail').value = '';
     document.getElementById('userPassword').value = '';
     document.getElementById('userRole').value = '';
+    const perm = document.getElementById('userCanModifyOrders');
+    if (perm) perm.checked = false;
+    const permSee = document.getElementById('userCanSeeAllOrders');
+    if (permSee) permSee.checked = false;
+    this._updateUserPermissionsVisibility();
     this.openModal('userModal');
+  },
+
+  async openEditUserDialog(userId) {
+    try {
+      const user = await UserService.getById(userId);
+      document.getElementById('userId').value = user.id;
+      document.getElementById('username').value = user.username;
+      document.getElementById('userEmail').value = user.email || '';
+      document.getElementById('userPassword').value = '';
+      document.getElementById('userRole').value = user.role;
+      const perm = document.getElementById('userCanModifyOrders');
+      if (perm) perm.checked = !!user.can_modify_orders;
+      const permSee = document.getElementById('userCanSeeAllOrders');
+      if (permSee) permSee.checked = !!user.can_see_all_orders;
+      this._updateUserPermissionsVisibility();
+      // Charger les tables assignées si le rôle est serveur (cashier)
+      if (user.role === 'cashier') {
+        await this._loadTablesForAssignment(user.id);
+      }
+      this.openModal('userModal');
+    } catch (error) {
+      this.toastError('Erreur: ' + error.message);
+    }
+  },
+
+  _updateUserPermissionsVisibility() {
+    const role = document.getElementById('userRole')?.value;
+    const permRow = document.getElementById('userPermissionsRow');
+    if (permRow) permRow.style.display = role === 'cashier' ? '' : 'none';
+    if (role === 'cashier') {
+      this._loadTablesForAssignment(null);
+    }
+  },
+
+  async _loadTablesForAssignment(waiterId = null) {
+    const container = document.getElementById('userTablesAssignment');
+    if (!container) return;
+
+    try {
+      const tables = await TableService.getAll();
+      if (tables.length === 0) {
+        container.innerHTML = '<p class="text-xs text-gray-400 italic">Aucune table configurée</p>';
+        return;
+      }
+
+      // Si on édite un utilisateur existant, récupérer ses tables actuelles
+      let assignedIds = [];
+      if (waiterId) {
+        const result = await TableService.getAssignedFor(waiterId);
+        assignedIds = result.table_ids || [];
+      }
+
+      container.innerHTML = tables.map(t => `
+        <label class="flex items-center gap-1.5 cursor-pointer p-1 rounded hover:bg-blue-50">
+          <input type="checkbox" name="tableAssign" value="${t.id}"
+            class="w-3.5 h-3.5 accent-blue-600"
+            ${assignedIds.includes(t.id) ? 'checked' : ''}>
+          <span class="text-xs text-gray-700">${this._esc(t.label)}</span>
+          ${t.assigned_waiter_id && t.assigned_waiter_id !== waiterId
+            ? `<span class="text-xs text-orange-500">(${this._esc(t.assigned_waiter_name || '?')})</span>`
+            : ''}
+        </label>
+      `).join('');
+    } catch (e) {
+      container.innerHTML = '<p class="text-xs text-red-400 italic">Erreur chargement tables</p>';
+    }
   },
 
   async saveUser(event) {
     event.preventDefault();
     const userId = document.getElementById('userId').value;
+    const role = document.getElementById('userRole').value;
     const data = {
-      username: document.getElementById('username').value,
-      email: document.getElementById('userEmail').value,
-      password: document.getElementById('userPassword').value,
-      role: document.getElementById('userRole').value
+      username:           document.getElementById('username').value,
+      email:              document.getElementById('userEmail').value,
+      password:           document.getElementById('userPassword').value,
+      role,
+      can_modify_orders:  role === 'cashier' && document.getElementById('userCanModifyOrders')?.checked  ? 1 : 0,
+      can_see_all_orders: role === 'cashier' && document.getElementById('userCanSeeAllOrders')?.checked ? 1 : 0,
     };
 
     try {
-      if (userId) await UserService.update(userId, data);
-      else        await UserService.create(data);
+      let savedId = userId;
+      if (userId) {
+        await UserService.update(userId, data);
+      } else {
+        const created = await UserService.create(data);
+        savedId = created.id;
+      }
+
+      // Sauvegarder les attributions de tables si rôle serveur
+      if (role === 'cashier' && savedId) {
+        const checkboxes = document.querySelectorAll('input[name="tableAssign"]:checked');
+        const tableIds = Array.from(checkboxes).map(cb => cb.value);
+        await TableService.assignForWaiter(savedId, tableIds);
+      } else if (role !== 'cashier' && userId) {
+        // Si le rôle a changé (n'est plus cashier), désassigner ses tables
+        await TableService.assignForWaiter(userId, []);
+      }
+
       await this.loadUsers();
       this.closeModal('userModal');
       this.toastSuccess('Utilisateur enregistré');
@@ -470,6 +561,8 @@ export const CatalogMethods = {
         return;
       }
 
+      const roleLabels = { admin: 'Admin', manager: 'Manager', cashier: 'Caissier', cook: 'Cuisinier' };
+
       container.innerHTML = users.map(user => `
         <div class="user-card">
           <div class="flex items-center gap-3">
@@ -479,11 +572,14 @@ export const CatalogMethods = {
             <div>
               <p class="font-semibold text-gray-800">${user.username}</p>
               <p class="text-xs text-gray-500">${user.email || 'Pas d\'email'}</p>
+              ${user.role === 'cashier' && user.can_modify_orders  ? '<p class="text-xs text-amber-600 font-medium">✏️ Peut modifier/annuler des commandes</p>' : ''}
+              ${user.role === 'cashier' && user.can_see_all_orders ? '<p class="text-xs text-blue-600 font-medium">👁️ Peut voir toutes les commandes</p>' : ''}
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <span class="badge badge-${user.role}">${user.role}</span>
-            <button onclick="app.deleteUser('${user.id}')" class="action-btn action-btn-delete">🗑️</button>
+            <span class="badge badge-${user.role}">${roleLabels[user.role] || user.role}</span>
+            <button onclick="app.openEditUserDialog('${user.id}')" class="action-btn action-btn-edit" title="Modifier">✏️</button>
+            <button onclick="app.deleteUser('${user.id}')" class="action-btn action-btn-delete" title="Supprimer">🗑️</button>
           </div>
         </div>
       `).join('');

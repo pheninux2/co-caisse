@@ -1,0 +1,30 @@
+pouvoir modifier une commande après l'avoir passée
+pouvoir annuler une commande après l'avoir passée
+pouvoir ajouter des produits à une commande après l'avoir passée avant la validation de la commande
+pouvoir supprimer des produits d'une commande après l'avoir passée avant la validation de la commande
+
+
+seulement les commandes qui n'ont pas été pris en charge par la cuisine peuvent être modifiées ou annulées
+seulement l'administrateur peut modifier ou annuler une commande
+seulement l'administrateur peut donnér des permissions àu serveur pour modifier ou annuler une commande
+
+actuelement la commande est modifiable mais pas les produits qui y sont associés
+si la modification d'une commande est autorisée, alors les produits associés à cette commande doivent aussi être modifiables.
+
+quand une commande est passer de l'onglet caisse le panier doit etre vidé .
+
+
+-----------------------------------------------------------
+
+senario constaté:
+
+je me suis connecté en tant que administrateur
+j'ai crée 2 tables t1 et t2
+j'ai attribué la table t1 au serveur s1 et voir les commande des autres serveurs
+j'ai attribué la table t2 au serveur s2
+
+
+je prend une commande avec serveur s2 et je lui donne la table t1
+  -> resultat : la commande est accépté malgre que la table t1 est attribué au serveur s1 !!
+le z-index de la popup de la table est deja occuper s'affihche toujours en arriere !
+le button supprimer une commande est visible pour les serveurs alors que seul l'administrateur doit pouvoir supprimer une commande

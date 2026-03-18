@@ -369,6 +369,24 @@ class Database {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
 
+      // ── audit_logs ─────────────────────────────────────────────────
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS \`audit_logs\` (
+          \`id\`          VARCHAR(36)  NOT NULL,
+          \`user_id\`     VARCHAR(36)  DEFAULT NULL,
+          \`user_name\`   VARCHAR(100) DEFAULT NULL,
+          \`action\`      VARCHAR(80)  NOT NULL,
+          \`target_type\` VARCHAR(50)  NOT NULL,
+          \`target_id\`   VARCHAR(36)  DEFAULT NULL,
+          \`details\`     JSON         DEFAULT NULL,
+          \`created_at\`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (\`id\`),
+          KEY \`idx_audit_target\`  (\`target_type\`, \`target_id\`),
+          KEY \`idx_audit_user\`    (\`user_id\`),
+          KEY \`idx_audit_date\`    (\`created_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+
       await conn.query('SET FOREIGN_KEY_CHECKS = 1');
       console.log('✅ Database connected');
       console.log('✅ All tables created/verified');
@@ -381,6 +399,31 @@ class Database {
           table: 'settings',
           column: 'country',
           ddl: "ALTER TABLE `settings` ADD COLUMN `country` VARCHAR(5) DEFAULT 'FR' COMMENT 'Code pays ISO (FR, MA, BE, CH)'",
+        },
+        {
+          table: 'users',
+          column: 'can_modify_orders',
+          ddl: "ALTER TABLE `users` ADD COLUMN `can_modify_orders` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Permission : peut modifier ou annuler une commande (accordée par l\\'admin)'",
+        },
+        {
+          table: 'users',
+          column: 'can_see_all_orders',
+          ddl: "ALTER TABLE `users` ADD COLUMN `can_see_all_orders` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Permission : peut voir les commandes de tous les serveurs'",
+        },
+        {
+          table: 'tables',
+          column: 'assigned_waiter_id',
+          ddl: "ALTER TABLE `tables` ADD COLUMN `assigned_waiter_id` VARCHAR(36) DEFAULT NULL COMMENT 'Serveur assigné à cette table'",
+        },
+        {
+          table: 'settings',
+          column: 'table_mode_enabled',
+          ddl: "ALTER TABLE `settings` ADD COLUMN `table_mode_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Mode avec tables activé'",
+        },
+        {
+          table: 'settings',
+          column: 'table_assignment_enabled',
+          ddl: "ALTER TABLE `settings` ADD COLUMN `table_assignment_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Attribution de tables par serveur activée'",
         },
       ];
       for (const guard of columnGuards) {

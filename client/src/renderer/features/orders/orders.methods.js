@@ -9,10 +9,8 @@ export const OrdersMethods = {
 
   async loadOrders() {
     try {
-      const status   = this.currentOrderFilter === 'all' ? '' : this.currentOrderFilter;
-      const userRole = this.currentUser?.role || 'cashier';
-      const userId   = userRole !== 'admin' ? this.currentUser?.id : undefined;
-      this.orders = await OrderService.getAll({ status, userId });
+      const status = this.currentOrderFilter === 'all' ? '' : this.currentOrderFilter;
+      this.orders = await OrderService.getAll({ status });
       this.renderOrders();
     } catch (error) {
       console.error('Error loading orders:', error);
@@ -29,8 +27,8 @@ export const OrdersMethods = {
       return;
     }
 
-    const statusIcons  = { draft: '⏳', in_kitchen: '🔥', ready: '✨', served: '🍽️', paid: '💰' };
-    const statusLabels = { draft: 'En attente de validation', in_kitchen: 'En cuisine', ready: 'Prête', served: 'Servie', paid: 'Payée' };
+    const statusIcons  = { draft: '⏳', in_kitchen: '🔥', ready: '✨', served: '🍽️', paid: '💰', cancelled: '🚫' };
+    const statusLabels = { draft: 'En attente de validation', in_kitchen: 'En cuisine', ready: 'Prête', served: 'Servie', paid: 'Payée', cancelled: 'Annulée' };
     const typeLabels   = { dine_in: '🍽️ Sur place', takeaway: '📦 À emporter', delivery: '🚚 Livraison' };
 
     container.innerHTML = this.orders.map(order => {
@@ -104,18 +102,37 @@ export const OrdersMethods = {
     this.loadOrders();
   },
 
-  openOrderDialog(orderId = null) {
+  async openOrderDialog(orderId = null) {
     if (this.cart.length === 0) {
       this.toastWarning('Veuillez ajouter des produits au panier');
       return;
     }
 
-    document.getElementById('orderId').value = orderId || '';
-    document.getElementById('orderType').value = 'dine_in';
-    document.getElementById('orderTableNumber').value = '';
-    document.getElementById('orderCustomerName').value = '';
-    document.getElementById('orderCustomerPhone').value = '';
-    document.getElementById('orderNotes').value = '';
+    // Si on est en mode édition d'une commande existante
+    const editId   = orderId || this.editingOrderId || '';
+    const editData = this._editingOrderData;
+
+    document.getElementById('orderId').value = editId;
+    document.getElementById('orderType').value = editData?.order_type || 'dine_in';
+    document.getElementById('orderCustomerName').value = editData?.customer_name || '';
+    document.getElementById('orderCustomerPhone').value = editData?.customer_phone || '';
+    document.getElementById('orderNotes').value = editData?.notes || '';
+    this._setOrderModalError(null);
+
+    // Mettre à jour le titre du modal selon le contexte
+    const modalTitle = document.querySelector('#orderModal h2');
+    if (modalTitle) {
+      modalTitle.textContent = editId ? `✏️ Modifier commande ${editData?.order_number || ''}` : '📋 Commande';
+    }
+    const submitBtn = document.querySelector('#orderModal button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.textContent = editId ? '💾 Mettre à jour' : '💾 Enregistrer';
+    }
+
+    // Forcer le rechargement des tables à chaque ouverture
+    await this.refreshTableSelect();
+    const tableSelect = document.getElementById('orderTableNumber');
+    if (tableSelect) tableSelect.value = editData?.table_number || '';
 
     const preview = document.getElementById('orderItemsPreview');
     if (preview && this.cart.length > 0) {
@@ -130,11 +147,25 @@ export const OrdersMethods = {
     this.openModal('orderModal');
   },
 
+  _setOrderModalError(message) {
+    const box  = document.getElementById('orderModalError');
+    const text = document.getElementById('orderModalErrorText');
+    if (!box || !text) return;
+    if (message) {
+      text.textContent = message;
+      box.classList.remove('hidden');
+    } else {
+      box.classList.add('hidden');
+      text.textContent = '';
+    }
+  },
+
   async saveOrder(event, force = false) {
     event.preventDefault();
+    this._setOrderModalError(null); // effacer erreur précédente
 
     try {
-      const orderId        = document.getElementById('orderId').value;
+      const orderId        = document.getElementById('orderId').value || this.editingOrderId || '';
       const table_number   = document.getElementById('orderTableNumber').value;
       const order_type     = document.getElementById('orderType').value;
       const customer_name  = document.getElementById('orderCustomerName').value;
@@ -146,15 +177,14 @@ export const OrdersMethods = {
         return;
       }
 
-      const subtotal = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const tax      = subtotal * 0.20;
+      const { totalTtc, totalHt, totalTax } = this.computeCartTax();
       const discount = this.currentDiscount;
-      const total    = subtotal + tax - discount;
+      const total    = totalTtc - discount;
 
       const orderData = {
         table_number, order_type, force,
-        items: this.cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price, total: item.price * item.quantity })),
-        subtotal, tax, discount, total, customer_name, customer_phone, notes,
+        items: this.cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price, tax_rate: item.tax_rate || 20, total: item.price * item.quantity })),
+        subtotal: totalHt, tax: totalTax, discount, total, customer_name, customer_phone, notes,
       };
 
       const order = orderId
@@ -164,7 +194,10 @@ export const OrdersMethods = {
       this.closeModal('orderModal');
       this.cart = [];
       this.currentDiscount = 0;
+      this.editingOrderId    = null;
+      this._editingOrderData = null;
       this.updateCartDisplay();
+      this._removeEditBanner();
       this.toastSuccess(`Commande ${order.order_number} enregistrée !`);
       this.showSection('orders');
     } catch (error) {
@@ -173,8 +206,9 @@ export const OrdersMethods = {
         this._showTableConflictDialog(error.conflict, event);
         return;
       }
+      // ── Toute autre erreur : afficher inline dans le modal ───────────────────
       console.error('Error saving order:', error);
-      this.toastError('Erreur lors de l\'enregistrement de la commande');
+      this._setOrderModalError(error.message || 'Erreur lors de l\'enregistrement de la commande');
     }
   },
 
@@ -194,7 +228,8 @@ export const OrdersMethods = {
     if (!dialog) {
       dialog = document.createElement('div');
       dialog.id = 'tableConflictModal';
-      dialog.className = 'modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-4';
+      dialog.className = 'modal-overlay hidden fixed inset-0 flex items-center justify-center p-4';
+      dialog.style.zIndex = '10000';
       document.body.appendChild(dialog);
     }
 
@@ -210,8 +245,11 @@ export const OrdersMethods = {
         </div>
 
         <div class="p-3 rounded-xl border-2 ${cls} mb-4">
-          <p class="font-semibold text-sm">${icon} ${this._esc(existing.order_number)} — ${label}</p>
-          <p class="text-xs mt-1 opacity-80">Par ${this._esc(existing.cashier_name)} · ${existing.total.toFixed(2)} €</p>
+          <div class="flex items-center justify-between">
+            <p class="font-semibold text-sm">${icon} ${this._esc(existing.order_number)} — ${label}</p>
+            <p class="text-sm font-semibold">${existing.total.toFixed(2)} €</p>
+          </div>
+          ${existing.cashier_name !== this.currentUser?.username ? `<p class="text-xs mt-1 opacity-80">Par ${this._esc(existing.cashier_name)}</p>` : ''}
           <p class="text-xs mt-0.5 opacity-70">${new Date(existing.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
         </div>
 
@@ -251,7 +289,7 @@ export const OrdersMethods = {
     try {
       const order = await OrderService.get(orderId);
 
-      const statusLabels = { draft: 'En attente de validation', in_kitchen: 'En cuisine', ready: 'Prête', served: 'Servie', paid: 'Payée' };
+      const statusLabels = { draft: 'En attente de validation', in_kitchen: 'En cuisine', ready: 'Prête', served: 'Servie', paid: 'Payée', cancelled: 'Annulée' };
       const typeLabels   = { dine_in: '🍽️ Sur place', takeaway: '📦 À emporter', delivery: '🚚 Livraison' };
       const items        = Array.isArray(order.items) ? order.items : JSON.parse(order.items || '[]');
 
@@ -329,10 +367,23 @@ export const OrdersMethods = {
             </div>
           </div>
 
+          ${(() => {
+            const userRole = this.currentUser?.role;
+            const canModify = userRole === 'admin' || this.currentUser?.can_modify_orders;
+            let handlers = [];
+            try { handlers = JSON.parse(order.kitchen_handlers || '[]'); } catch {}
+            const notHandledByKitchen = order.status !== 'in_kitchen' || handlers.length === 0;
+            const isEditable = ['draft', 'in_kitchen'].includes(order.status) && notHandledByKitchen && canModify;
+            return `
           <div class="flex flex-wrap gap-2">
             ${order.status === 'draft' ? `
               <button onclick="app.validateOrder('${order.id}')" class="order-action-btn order-action-btn-primary">👨‍🍳 Valider & Envoyer en cuisine</button>
+            ` : ''}
+            ${isEditable ? `
               <button onclick="app.editOrder('${order.id}')" class="order-action-btn order-action-btn-secondary">✏️ Modifier</button>
+              <button onclick="app.cancelOrder('${order.id}')" class="order-action-btn order-action-btn-danger">🚫 Annuler commande</button>
+            ` : ''}
+            ${order.status === 'draft' && userRole === 'admin' ? `
               <button onclick="app.deleteOrder('${order.id}')" class="order-action-btn order-action-btn-danger">🗑️ Supprimer</button>
             ` : ''}
             ${order.status === 'in_kitchen' ? `<button onclick="app.markOrderReady('${order.id}')" class="order-action-btn order-action-btn-success">✨ Marquer prête</button>` : ''}
@@ -342,8 +393,13 @@ export const OrdersMethods = {
             ` : ''}
             ${order.status === 'served' ? `<button onclick="app.payOrder('${order.id}')" class="order-action-btn order-action-btn-success">💰 Encaisser</button>` : ''}
             ${order.status === 'paid' ? `<p class="text-green-600 font-medium">✅ Commande payée le ${new Date(order.paid_at).toLocaleString('fr-FR')}</p>` : ''}
+            ${order.status === 'cancelled' ? `<p class="text-red-600 font-medium">🚫 Commande annulée</p>` : ''}
+            ${order.status === 'in_kitchen' && !notHandledByKitchen && canModify ? `
+              <p class="text-xs text-orange-600 bg-orange-50 p-2 rounded-lg w-full">⚠️ Modification impossible — un cuisinier a déjà pris en charge cette commande</p>
+            ` : ''}
             <button onclick="app.closeModal('orderDetailModal')" class="order-action-btn order-action-btn-secondary ml-auto">Fermer</button>
-          </div>
+          </div>`;
+          })()}
         </div>
       `;
 
@@ -453,42 +509,61 @@ export const OrdersMethods = {
   async editOrder(orderId) {
     try {
       const order = await OrderService.get(orderId);
-      if (order.status !== 'draft') {
-        this.toastWarning('Seules les commandes en attente de validation peuvent être modifiées');
-        return;
-      }
+
       const items = Array.isArray(order.items) ? order.items : JSON.parse(order.items || '[]');
-      this.cart = items.map(item => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, discount: 0 }));
+      this.cart = items.map(item => ({
+        id: item.id, name: item.name, price: item.price,
+        quantity: item.quantity, tax_rate: item.tax_rate || 20, discount: 0,
+      }));
       this.currentDiscount = order.discount || 0;
+      this.editingOrderId  = order.id;
+      this._editingOrderData = {
+        order_type:     order.order_type    || 'dine_in',
+        table_number:   order.table_number  || '',
+        customer_name:  order.customer_name || '',
+        customer_phone: order.customer_phone|| '',
+        notes:          order.notes         || '',
+        order_number:   order.order_number,
+      };
+
       this.updateCartDisplay();
       this.closeModal('orderDetailModal');
 
-      document.getElementById('orderId').value = order.id;
-      document.getElementById('orderType').value = order.order_type || 'dine_in';
-      document.getElementById('orderCustomerName').value = order.customer_name || '';
-      document.getElementById('orderCustomerPhone').value = order.customer_phone || '';
-      document.getElementById('orderNotes').value = order.notes || '';
-
-      await this.refreshTableSelect();
-      const tableSelect = document.getElementById('orderTableNumber');
-      if (tableSelect) tableSelect.value = order.table_number || '';
-
-      const preview = document.getElementById('orderItemsPreview');
-      if (preview && this.cart.length > 0) {
-        preview.innerHTML = this.cart.map(item => `
-          <div class="flex items-center justify-between text-sm py-1">
-            <span class="text-gray-700">${item.name} ×${item.quantity}</span>
-            <span class="font-medium text-gray-800">${(item.price * item.quantity).toFixed(2)} €</span>
-          </div>
-        `).join('');
-      }
-
-      this.openModal('orderModal');
-      this.toastInfo('Modifiez les informations de la commande');
+      // Aller sur la caisse pour permettre la modification du panier
+      this.showSection('pos');
+      this._showEditBanner(order.order_number);
+      this.toastInfo(`Modifiez le panier puis cliquez sur "Modifier commande"`);
     } catch (error) {
       console.error('Error editing order:', error);
-      this.toastError('Erreur lors du chargement de la commande');
+      this.toastError(error.message || 'Erreur lors du chargement de la commande');
     }
+  },
+
+  _showEditBanner(orderNumber) {
+    this._removeEditBanner();
+    const banner = document.createElement('div');
+    banner.id = 'editOrderBanner';
+    banner.className = 'bg-amber-100 border-b border-amber-400 text-amber-800 px-3 py-2 text-xs font-medium flex items-center justify-between flex-shrink-0';
+    banner.innerHTML = `
+      <span>✏️ Modif. <strong>${orderNumber}</strong> — Éditez le panier puis "Modifier commande"</span>
+      <button onclick="app._cancelEdit()" class="ml-2 text-amber-600 hover:text-amber-900 font-bold text-base leading-none">×</button>
+    `;
+    const cartItems = document.getElementById('cartItems');
+    if (cartItems) cartItems.parentElement.insertBefore(banner, cartItems);
+  },
+
+  _removeEditBanner() {
+    document.getElementById('editOrderBanner')?.remove();
+  },
+
+  _cancelEdit() {
+    this.editingOrderId   = null;
+    this._editingOrderData = null;
+    this.cart             = [];
+    this.currentDiscount  = 0;
+    this.updateCartDisplay();
+    this._removeEditBanner();
+    this.toastInfo('Modification annulée');
   },
 
   async deleteOrder(orderId) {
@@ -502,6 +577,25 @@ export const OrdersMethods = {
     } catch (error) {
       console.error('Error deleting order:', error);
       this.toastError('Erreur lors de la suppression');
+    }
+  },
+
+  async cancelOrder(orderId) {
+    try {
+      const confirmed = await this.confirm(
+        'Annuler cette commande ? Elle ne pourra plus être modifiée.',
+        { title: 'Annulation commande', icon: '🚫', type: 'danger', confirmText: 'Annuler la commande', cancelText: 'Retour' }
+      );
+      if (!confirmed) return;
+      await OrderService.cancel(orderId);
+      this.toastSuccess('Commande annulée');
+      this.closeModal('orderDetailModal');
+      this.resetAlertForOrder(orderId);
+      await this.loadOrders();
+      await this.loadAlerts();
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      this.toastError(error.message || 'Erreur lors de l\'annulation');
     }
   },
 

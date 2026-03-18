@@ -47,6 +47,13 @@ const OrderService = {
     if (!res.ok) throw new Error('Erreur suppression commande');
   },
 
+  async cancel(id) {
+    const res = await api.fetch(`${API_URL}/orders/${id}/cancel`, { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Erreur annulation commande');
+    return body;
+  },
+
   async validate(id) {
     const res = await api.fetch(`${API_URL}/orders/${id}/validate`, { method: 'POST' });
     if (!res.ok) throw new Error('Erreur validation commande');

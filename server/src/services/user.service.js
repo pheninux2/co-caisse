@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt           from 'bcryptjs';
 
 const BCRYPT_ROUNDS = 12;
-const SELECT_SAFE   = 'id, username, email, role, profile, active';
+const SELECT_SAFE   = 'id, username, email, role, profile, active, can_modify_orders, can_see_all_orders';
 
 export const UserService = {
 
@@ -44,28 +44,32 @@ export const UserService = {
   },
 
   async update(db, id, data) {
-    const { email, role, profile, active, password } = data;
+    const { email, role, profile, active, password, can_modify_orders, can_see_all_orders } = data;
     if (password) {
       const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
       await db.run(
         `UPDATE \`users\` SET
-           email    = COALESCE(?, email),
-           role     = COALESCE(?, role),
-           profile  = COALESCE(?, profile),
-           active   = COALESCE(?, active),
-           password = ?
+           email              = COALESCE(?, email),
+           role               = COALESCE(?, role),
+           profile            = COALESCE(?, profile),
+           active             = COALESCE(?, active),
+           can_modify_orders  = COALESCE(?, can_modify_orders),
+           can_see_all_orders = COALESCE(?, can_see_all_orders),
+           password           = ?
          WHERE id = ?`,
-        [email, role, profile, active, hash, id]
+        [email, role, profile, active, can_modify_orders != null ? can_modify_orders : null, can_see_all_orders != null ? can_see_all_orders : null, hash, id]
       );
     } else {
       await db.run(
         `UPDATE \`users\` SET
-           email   = COALESCE(?, email),
-           role    = COALESCE(?, role),
-           profile = COALESCE(?, profile),
-           active  = COALESCE(?, active)
+           email              = COALESCE(?, email),
+           role               = COALESCE(?, role),
+           profile            = COALESCE(?, profile),
+           active             = COALESCE(?, active),
+           can_modify_orders  = COALESCE(?, can_modify_orders),
+           can_see_all_orders = COALESCE(?, can_see_all_orders)
          WHERE id = ?`,
-        [email, role, profile, active, id]
+        [email, role, profile, active, can_modify_orders != null ? can_modify_orders : null, can_see_all_orders != null ? can_see_all_orders : null, id]
       );
     }
     return db.get(`SELECT ${SELECT_SAFE} FROM \`users\` WHERE id = ?`, [id]);

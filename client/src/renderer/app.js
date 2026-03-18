@@ -40,6 +40,8 @@ class CocaisseApp {
     this.heldCarts = [];
     this.orders = [];
     this.currentOrderFilter = 'all';
+    this.editingOrderId    = null;
+    this._editingOrderData = null;
     this.floorPlan = null;
     this.floorPlanTables = [];
     this.floorPlanEditMode = false;

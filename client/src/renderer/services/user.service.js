@@ -25,6 +25,12 @@ const UserService = {
     return data; // { token, user }
   },
 
+  async getById(id) {
+    const res = await api.fetch(`${API_URL}/users/${id}`);
+    if (!res.ok) throw new Error('Utilisateur introuvable');
+    return res.json();
+  },
+
   async create(data) {
     const res = await api.fetch(`${API_URL}/users`, {
       method: 'POST',

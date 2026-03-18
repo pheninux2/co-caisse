@@ -31,12 +31,14 @@ router.post('/login', async (req, res) => {
     res.json({
       token,
       user: {
-        id:       user.id,
-        username: user.username,
-        email:    user.email,
-        role:     user.role,
-        profile:  user.profile,
-        active:   user.active,
+        id:                  user.id,
+        username:            user.username,
+        email:               user.email,
+        role:                user.role,
+        profile:             user.profile,
+        active:              user.active,
+        can_modify_orders:   user.can_modify_orders   || 0,
+        can_see_all_orders:  user.can_see_all_orders  || 0,
       },
     });
   } catch (error) {

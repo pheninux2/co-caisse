@@ -6,6 +6,7 @@ import multer  from 'multer';
 import { roleCheck } from '../middleware/auth.js';
 import { TableService } from '../services/table.service.js';
 import { requireFields } from '../validators/common.js';
+import { AuditService } from '../services/audit.service.js';
 
 const router = express.Router();
 
@@ -94,6 +95,46 @@ router.put('/drawing', roleCheck(['admin']), async (req, res) => {
   try {
     const count = await TableService.saveDrawing(req.app.locals.db, req.body.elements);
     res.json({ success: true, count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/tables/assign-bulk — Attribuer des tables à un serveur ─────────
+// Body: { waiter_id: string, table_ids: string[] }
+router.post('/assign-bulk', roleCheck(['admin', 'manager']), async (req, res) => {
+  try {
+    const { waiter_id, table_ids = [] } = req.body;
+    if (!waiter_id) return res.status(400).json({ error: 'waiter_id requis' });
+
+    const db = req.app.locals.db;
+    const waiter = await db.get('SELECT id, username FROM `users` WHERE id = ? AND active = 1', [waiter_id]);
+    if (!waiter) return res.status(404).json({ error: 'Serveur introuvable' });
+
+    const actor = await db.get('SELECT username FROM `users` WHERE id = ?', [req.userId]);
+
+    await TableService.assignForWaiter(db, waiter_id, table_ids);
+
+    await AuditService.log(db, {
+      userId:     req.userId,
+      userName:   actor?.username || null,
+      action:     'table.assign',
+      targetType: 'user',
+      targetId:   waiter_id,
+      details:    { waiter_name: waiter.username, assigned_table_ids: table_ids },
+    });
+
+    res.json({ success: true, waiter_id, table_ids });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/tables/assigned/:waiterId — Tables assignées à un serveur ────────
+router.get('/assigned/:waiterId', roleCheck(['admin', 'manager']), async (req, res) => {
+  try {
+    const tableIds = await TableService.getAssignedFor(req.app.locals.db, req.params.waiterId);
+    res.json({ waiter_id: req.params.waiterId, table_ids: tableIds });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

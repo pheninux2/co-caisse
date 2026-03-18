@@ -2,6 +2,7 @@
  * Co-Caisse — OrderService
  */
 import { v4 as uuidv4 } from 'uuid';
+import { AuditService } from './audit.service.js';
 
 function generateOrderNumber() {
   const now  = new Date();
@@ -54,6 +55,26 @@ export const OrderService = {
       }
     }
 
+    // ── Contrôle attribution de table ────────────────────────────────────────
+    // Si une table a un serveur assigné, seul ce serveur (ou admin/manager) peut y ouvrir une commande.
+    if (table_number && order_type === 'dine_in') {
+      const actor = await db.get('SELECT role FROM `users` WHERE id = ?', [userId]);
+      if (!['admin', 'manager'].includes(actor?.role)) {
+        const table = await db.get(
+          'SELECT assigned_waiter_id FROM `tables` WHERE label = ? AND active = 1 LIMIT 1',
+          [table_number]
+        );
+        if (table?.assigned_waiter_id && table.assigned_waiter_id !== userId) {
+          const assignedUser = await db.get('SELECT username FROM `users` WHERE id = ?', [table.assigned_waiter_id]);
+          const err = new Error(
+            `La table ${table_number} est assignée à ${assignedUser?.username || 'un autre serveur'} — vous ne pouvez pas y ouvrir une commande`
+          );
+          err.status = 403;
+          throw err;
+        }
+      }
+    }
+
     const id           = uuidv4();
     const order_number = generateOrderNumber();
 
@@ -83,7 +104,7 @@ export const OrderService = {
     return db.get('SELECT * FROM `orders` WHERE id = ?', [id]);
   },
 
-  async getAll(db, filters = {}, userId, userRole) {
+  async getAll(db, filters = {}, userId, userRole, canSeeAll = false) {
     const {
       status, order_type, table_number,
       start_date, end_date,
@@ -98,7 +119,7 @@ export const OrderService = {
     `;
     const params = [];
 
-    if (userRole === 'cashier') { query += ' AND o.created_by = ?'; params.push(userId); }
+    if (userRole === 'cashier' && !canSeeAll) { query += ' AND o.created_by = ?'; params.push(userId); }
     if (userRole === 'cook')    { query += " AND o.status IN ('in_kitchen','ready')"; }
 
     if (status)       { query += ' AND o.status = ?';            params.push(status);       }
@@ -125,14 +146,44 @@ export const OrderService = {
     return order;
   },
 
-  async update(db, id, data) {
-    const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [id]);
-    if (!order) return null;
-    if (order.status !== 'draft') {
-      const err = new Error('Can only modify draft orders');
+  // ── Vérifie si l'utilisateur peut modifier/annuler des commandes ──────────
+  async _checkModifyPermission(db, userId) {
+    const user = await db.get('SELECT role, can_modify_orders FROM `users` WHERE id = ?', [userId]);
+    if (!user) {
+      const err = new Error('Utilisateur introuvable');
+      err.status = 401;
+      throw err;
+    }
+    if (user.role === 'admin') return; // admin toujours autorisé
+    if (user.can_modify_orders) return; // cashier avec permission accordée
+    const err = new Error('Vous n\'avez pas la permission de modifier ou annuler des commandes');
+    err.status = 403;
+    throw err;
+  },
+
+  // ── Vérifie si la commande est modifiable (non prise en charge par cuisine) ─
+  _checkOrderEditable(order) {
+    if (!['draft', 'in_kitchen'].includes(order.status)) {
+      const err = new Error('Seules les commandes en attente ou en cuisine (non prise en charge) peuvent être modifiées');
       err.status = 400;
       throw err;
     }
+    if (order.status === 'in_kitchen') {
+      let handlers = [];
+      try { handlers = JSON.parse(order.kitchen_handlers || '[]'); } catch { handlers = []; }
+      if (handlers.length > 0) {
+        const err = new Error('Cette commande a déjà été prise en charge par la cuisine — modification impossible');
+        err.status = 400;
+        throw err;
+      }
+    }
+  },
+
+  async update(db, id, data, userId) {
+    const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [id]);
+    if (!order) return null;
+    await this._checkModifyPermission(db, userId);
+    this._checkOrderEditable(order);
     const {
       table_number, order_type, items,
       subtotal, tax, discount, total,
@@ -151,6 +202,16 @@ export const OrderService = {
         id,
       ]
     );
+    // ── Audit log ────────────────────────────────────────────────────────────
+    const actor = await db.get('SELECT username FROM `users` WHERE id = ?', [userId]);
+    await AuditService.log(db, {
+      userId,
+      userName:   actor?.username || null,
+      action:     'order.update',
+      targetType: 'order',
+      targetId:   id,
+      details:    { order_number: order.order_number, fields_updated: Object.keys(data) },
+    });
     return db.get('SELECT * FROM `orders` WHERE id = ?', [id]);
   },
 
@@ -164,6 +225,28 @@ export const OrderService = {
     }
     await db.run('DELETE FROM `orders` WHERE id = ?', [id]);
     return true;
+  },
+
+  async cancel(db, id, userId) {
+    const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [id]);
+    if (!order) return null;
+    await this._checkModifyPermission(db, userId);
+    this._checkOrderEditable(order);
+    await db.run(
+      "UPDATE `orders` SET status = 'cancelled' WHERE id = ?",
+      [id]
+    );
+    // ── Audit log ────────────────────────────────────────────────────────────
+    const actor = await db.get('SELECT username FROM `users` WHERE id = ?', [userId]);
+    await AuditService.log(db, {
+      userId,
+      userName:   actor?.username || null,
+      action:     'order.cancel',
+      targetType: 'order',
+      targetId:   id,
+      details:    { order_number: order.order_number, previous_status: order.status },
+    });
+    return db.get('SELECT * FROM `orders` WHERE id = ?', [id]);
   },
 
   async getKitchenActive(db) {

@@ -168,9 +168,14 @@ export const TableService = {
   // ── Tables ─────────────────────────────────────────────────────────────────
 
   async getAll(db) {
-    return db.all(
-      'SELECT id, label, capacity, shape FROM `tables` WHERE active = 1 ORDER BY label ASC'
-    );
+    return db.all(`
+      SELECT t.id, t.label, t.capacity, t.shape, t.assigned_waiter_id,
+             u.username AS assigned_waiter_name
+      FROM \`tables\` t
+      LEFT JOIN \`users\` u ON u.id = t.assigned_waiter_id
+      WHERE t.active = 1
+      ORDER BY t.label ASC
+    `);
   },
 
   async create(db, data) {
@@ -238,6 +243,41 @@ export const TableService = {
 
     await db.run('UPDATE `tables` SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
     return table.label;
+  },
+
+  // ── Attribution de tables ───────────────────────────────────────────────
+
+  /**
+   * Assigne une liste de tables à un serveur donné.
+   * Les tables actuellement assignées à ce serveur et absentes de tableIds sont désassignées.
+   * @param {object} db
+   * @param {string} waiterId  - ID du serveur (user.id)
+   * @param {string[]} tableIds - IDs des tables à assigner
+   */
+  async assignForWaiter(db, waiterId, tableIds = []) {
+    // 1. Désassigner toutes les tables actuellement liées à ce serveur
+    await db.run(
+      'UPDATE `tables` SET assigned_waiter_id = NULL WHERE assigned_waiter_id = ? AND active = 1',
+      [waiterId]
+    );
+    // 2. Assigner les nouvelles tables
+    for (const tableId of tableIds) {
+      await db.run(
+        'UPDATE `tables` SET assigned_waiter_id = ? WHERE id = ? AND active = 1',
+        [waiterId, tableId]
+      );
+    }
+  },
+
+  /**
+   * Retourne les IDs de tables assignées à un serveur.
+   */
+  async getAssignedFor(db, waiterId) {
+    const rows = await db.all(
+      'SELECT id FROM `tables` WHERE assigned_waiter_id = ? AND active = 1',
+      [waiterId]
+    );
+    return rows.map(r => r.id);
   },
 
 };

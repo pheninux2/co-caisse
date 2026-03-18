@@ -1,6 +1,12 @@
 import { api, API_URL } from '../core/api.js';
 
 const TableService = {
+  async getAll() {
+    const res = await api.fetch(`${API_URL}/tables`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  },
+
   async getLayout() {
     const res = await api.fetch(`${API_URL}/tables/layout`);
     return res.json(); // { floor_plan, tables }
@@ -77,6 +83,23 @@ const TableService = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erreur suppression table');
     return data;
+  },
+
+  async assignForWaiter(waiterId, tableIds = []) {
+    const res = await api.fetch(`${API_URL}/tables/assign-bulk`, {
+      method: 'POST',
+      body: JSON.stringify({ waiter_id: waiterId, table_ids: tableIds }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur attribution tables');
+    return data;
+  },
+
+  async getAssignedFor(waiterId) {
+    const res = await api.fetch(`${API_URL}/tables/assigned/${encodeURIComponent(waiterId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur récupération tables assignées');
+    return data; // { waiter_id, table_ids: [] }
   },
 };
 

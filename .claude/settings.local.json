@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /c/Users/MHA25660/IdeaProjects/co-caisse-v4/server/src/routes/*.js)",
+      "Bash(grep -rn \"loadUsers\\\\|saveUser\\\\|openUserModal\\\\|can_modify\" \"C:\\\\Users\\\\MHA25660\\\\IdeaProjects\\\\co-caisse-v4\\\\client\\\\src\\\\renderer\"\" --include=\"*.js \")"
+    ]
+  }
+}

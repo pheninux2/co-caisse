@@ -40,9 +40,10 @@ router.post('/', roleCheck(['admin', 'cashier']), async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const db          = req.app.locals.db;
-    const currentUser = await db.get('SELECT role FROM `users` WHERE id = ?', [req.userId]);
+    const currentUser = await db.get('SELECT role, can_see_all_orders FROM `users` WHERE id = ?', [req.userId]);
     const userRole    = currentUser?.role || 'cashier';
-    res.json(await OrderService.getAll(db, req.query, req.userId, userRole));
+    const canSeeAll   = !!(currentUser?.can_see_all_orders);
+    res.json(await OrderService.getAll(db, req.query, req.userId, userRole, canSeeAll));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -99,10 +100,10 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ── PUT /:id — Modifier une commande (draft uniquement) ───────────────────────
+// ── PUT /:id — Modifier une commande ─────────────────────────────────────────
 router.put('/:id', roleCheck(['admin', 'cashier']), async (req, res) => {
   try {
-    const order = await OrderService.update(req.app.locals.db, req.params.id, req.body);
+    const order = await OrderService.update(req.app.locals.db, req.params.id, req.body, req.userId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     res.json(order);
   } catch (error) {
@@ -116,6 +117,17 @@ router.delete('/:id', roleCheck(['admin', 'cashier']), async (req, res) => {
     const result = await OrderService.remove(req.app.locals.db, req.params.id);
     if (!result) return res.status(404).json({ error: 'Order not found' });
     res.json({ message: 'Order deleted successfully' });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// ── POST /:id/cancel — Annuler une commande ───────────────────────────────────
+router.post('/:id/cancel', roleCheck(['admin', 'cashier']), async (req, res) => {
+  try {
+    const order = await OrderService.cancel(req.app.locals.db, req.params.id, req.userId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    res.json(order);
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }

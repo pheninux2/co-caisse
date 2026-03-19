@@ -563,9 +563,10 @@ class CocaisseApp {
     const lockedModules = [];
 
     // ── Réinitialiser la visibilité de tous les onglets nav ──────────────
-    // (nécessaire pour le re-login sans rechargement de page)
+    // Utiliser style.display pour éviter les conflits de spécificité CSS
+    // (.nav-tab { display: flex } peut l'emporter sur .hidden { display: none })
     document.querySelectorAll('.nav-tab, .mobile-nav-item').forEach(item => {
-      item.classList.remove('hidden');
+      item.style.display = '';
     });
 
     // ── Filtrage des onglets (desktop + mobile) ──────────────────────────
@@ -595,9 +596,9 @@ class CocaisseApp {
         }
       }
 
-      // Masquer si non autorisé (classList plutôt que remove — permettre re-login)
+      // Masquer si non autorisé — style.display garantit la priorité sur les classes CSS
       if (!roleOk || !moduleOk) {
-        item.classList.add('hidden');
+        item.style.display = 'none';
       }
     };
 
@@ -618,12 +619,12 @@ class CocaisseApp {
 
     if (licenceMissing.length > 0) {
       this._lockedModules = licenceMissing;
-      lockedBtn?.classList.remove('hidden');
-      lockedMobileBtn?.classList.remove('hidden');
+      if (lockedBtn)       lockedBtn.style.display       = '';
+      if (lockedMobileBtn) lockedMobileBtn.style.display = '';
     } else {
       this._lockedModules = [];
-      lockedBtn?.classList.add('hidden');
-      lockedMobileBtn?.classList.add('hidden');
+      if (lockedBtn)       lockedBtn.style.display       = 'none';
+      if (lockedMobileBtn) lockedMobileBtn.style.display = 'none';
     }
 
     // ── Boutons export/import : admin seulement ──────────────────────────

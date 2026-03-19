@@ -120,6 +120,24 @@ const OrderService = {
     if (!res.ok) throw new Error('Erreur prise en charge');
     return res.json();
   },
+
+  async deleteCancelled(id) {
+    const res = await api.fetch(`${API_URL}/orders/cancelled/${id}`, { method: 'DELETE' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Erreur suppression définitive');
+    return body;
+  },
+
+  async getAnalytics({ start_date, end_date, period = 'day' } = {}) {
+    const params = new URLSearchParams();
+    if (start_date) params.append('start_date', start_date);
+    if (end_date)   params.append('end_date',   end_date);
+    if (period)     params.append('period',      period);
+    const res  = await api.fetch(`${API_URL}/orders/analytics?${params}`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Erreur analytics');
+    return body;
+  },
 };
 
 export { OrderService };

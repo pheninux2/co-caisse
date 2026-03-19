@@ -128,6 +128,8 @@ class Database {
           ready_at         DATETIME,
           served_at        DATETIME,
           paid_at          DATETIME,
+          cancelled_at     DATETIME,
+          cancelled_by     VARCHAR(36),
           transaction_id   VARCHAR(36),
           CONSTRAINT fk_order_user FOREIGN KEY (created_by) REFERENCES users(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -424,6 +426,16 @@ class Database {
           table: 'settings',
           column: 'table_assignment_enabled',
           ddl: "ALTER TABLE `settings` ADD COLUMN `table_assignment_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Attribution de tables par serveur activée'",
+        },
+        {
+          table: 'orders',
+          column: 'cancelled_at',
+          ddl: "ALTER TABLE `orders` ADD COLUMN `cancelled_at` DATETIME DEFAULT NULL COMMENT 'Horodatage de l\\'annulation'",
+        },
+        {
+          table: 'orders',
+          column: 'cancelled_by',
+          ddl: "ALTER TABLE `orders` ADD COLUMN `cancelled_by` VARCHAR(36) DEFAULT NULL COMMENT 'User id ayant annulé la commande'",
         },
       ];
       for (const guard of columnGuards) {

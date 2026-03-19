@@ -26,6 +26,7 @@ import { PaymentMethods }    from './features/payment/payment.methods.js';
 import { WizardMethods }     from './features/wizard/wizard.methods.js';
 import { CatalogMethods }    from './features/catalog/catalog.methods.js';
 import { CartMethods }       from './features/cart/cart.methods.js';
+import { AnalyticsMethods } from './features/analytics/analytics.methods.js';
 
 class CocaisseApp {
   constructor() {
@@ -510,7 +511,7 @@ class CocaisseApp {
     router.on('kitchen',   () => this.loadKitchenOrders());
     router.on('products',  () => this.filterProducts(''));
     router.on('floorplan', () => this.loadFloorPlan());
-    router.on('history',   () => { this.loadTransactions(); this.checkClosureStatus(); });
+    router.on('history',   () => { this.loadTransactions(); this.checkClosureStatus(); this.loadAnalytics(); });
     router.on('settings',  () => {
       this.loadUsers();
       this.loadSettingsData();
@@ -945,6 +946,7 @@ Object.assign(CocaisseApp.prototype, PaymentMethods);
 Object.assign(CocaisseApp.prototype, WizardMethods);
 Object.assign(CocaisseApp.prototype, CatalogMethods);
 Object.assign(CocaisseApp.prototype, CartMethods);
+Object.assign(CocaisseApp.prototype, AnalyticsMethods);
 
 // ─────────────────────────────────────────────────────────────────────────────
 

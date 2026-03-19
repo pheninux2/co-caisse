@@ -89,6 +89,26 @@ router.get('/stats/detailed', roleCheck(['admin', 'manager']), async (req, res) 
   }
 });
 
+// ── GET /analytics — Analytics restaurant complètes ───────────────────────────
+router.get('/analytics', roleCheck(['admin', 'manager']), async (req, res) => {
+  try {
+    res.json(await OrderService.getAnalytics(req.app.locals.db, req.query));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── DELETE /cancelled/:id — Suppression définitive (admin) ────────────────────
+router.delete('/cancelled/:id', roleCheck(['admin']), async (req, res) => {
+  try {
+    const result = await OrderService.permanentDelete(req.app.locals.db, req.params.id, req.userId);
+    if (!result) return res.status(404).json({ error: 'Commande introuvable' });
+    res.json(result);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 // ── GET /:id ──────────────────────────────────────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {

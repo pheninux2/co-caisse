@@ -386,14 +386,27 @@ export const OrdersMethods = {
             ${order.status === 'draft' && userRole === 'admin' ? `
               <button onclick="app.deleteOrder('${order.id}')" class="order-action-btn order-action-btn-danger">🗑️ Supprimer</button>
             ` : ''}
-            ${order.status === 'in_kitchen' ? `<button onclick="app.markOrderReady('${order.id}')" class="order-action-btn order-action-btn-success">✨ Marquer prête</button>` : ''}
+            ${order.status === 'in_kitchen' ? (() => {
+              const canMarkReady = ['admin', 'manager', 'cook'].includes(userRole);
+              return canMarkReady
+                ? `<button onclick="app.markOrderReady('${order.id}')" class="order-action-btn order-action-btn-success">✨ Marquer prête</button>`
+                : `<button disabled title="Réservé à la cuisine / admin" class="order-action-btn order-action-btn-success opacity-40 cursor-not-allowed">✨ Marquer prête</button>`;
+            })() : ''}
             ${order.status === 'ready' ? `
               <button onclick="app.markOrderServed('${order.id}')" class="order-action-btn order-action-btn-primary">🍽️ Marquer servie</button>
-              <button onclick="app.payOrder('${order.id}')" class="order-action-btn order-action-btn-success">💰 Encaisser</button>
             ` : ''}
             ${order.status === 'served' ? `<button onclick="app.payOrder('${order.id}')" class="order-action-btn order-action-btn-success">💰 Encaisser</button>` : ''}
             ${order.status === 'paid' ? `<p class="text-green-600 font-medium">✅ Commande payée le ${new Date(order.paid_at).toLocaleString('fr-FR')}</p>` : ''}
-            ${order.status === 'cancelled' ? `<p class="text-red-600 font-medium">🚫 Commande annulée</p>` : ''}
+            ${order.status === 'cancelled' ? `
+              <div class="flex items-center gap-3">
+                <p class="text-red-600 font-medium">🚫 Commande annulée${order.cancelled_at ? ' le ' + new Date(order.cancelled_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : ''}</p>
+                ${userRole === 'admin' ? `
+                  <button onclick="app.deleteCancelledOrder('${order.id}', '${order.order_number}')" class="order-action-btn order-action-btn-danger text-xs">
+                    🗑️ Supprimer définitivement
+                  </button>
+                ` : ''}
+              </div>
+            ` : ''}
             ${order.status === 'in_kitchen' && !notHandledByKitchen && canModify ? `
               <p class="text-xs text-orange-600 bg-orange-50 p-2 rounded-lg w-full">⚠️ Modification impossible — un cuisinier a déjà pris en charge cette commande</p>
             ` : ''}

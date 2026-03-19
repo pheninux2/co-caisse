@@ -633,6 +633,9 @@
                         <button onclick="app.filterOrders('paid')" class="order-filter-btn" data-filter="paid">
                             💰 Payées
                         </button>
+                        <button onclick="app.filterOrders('cancelled')" class="order-filter-btn" data-filter="cancelled">
+                            🚫 Annulées
+                        </button>
                     </div>
                 </div>
 
@@ -751,86 +754,257 @@
                     </button>
                 </div>
 
-                <!-- Stats rapides -->
-                <div class="p-3 bg-white border-b border-gray-200 flex-shrink-0">
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-                        <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-3 rounded-xl">
-                            <p class="text-xs opacity-80">Aujourd'hui</p>
-                            <p id="statToday" class="text-lg font-bold">0 €</p>
+                <!-- Sous-onglets Historique -->
+                <div class="bg-white border-b border-gray-200 px-4 flex gap-1 flex-shrink-0">
+                    <button onclick="app.switchAnalyticsTab('transactions')" data-analytics-tab="transactions"
+                        class="analytics-tab-btn active-analytics-tab px-4 py-3 text-sm font-medium border-b-2 transition">
+                        📈 Transactions
+                    </button>
+                    <button onclick="app.switchAnalyticsTab('analytics')" data-analytics-tab="analytics"
+                        class="analytics-tab-btn px-4 py-3 text-sm font-medium border-b-2 transition">
+                        📊 Analytics
+                    </button>
+                    <button onclick="app.switchAnalyticsTab('cancelled')" data-analytics-tab="cancelled"
+                        class="analytics-tab-btn px-4 py-3 text-sm font-medium border-b-2 transition">
+                        🚫 Annulées
+                    </button>
+                </div>
+
+                <!-- ═══ ONGLET TRANSACTIONS ═══════════════════════════════════ -->
+                <div id="analyticsTab_transactions" class="analytics-tab-content flex flex-col flex-1 overflow-hidden">
+                    <!-- Stats rapides -->
+                    <div class="p-3 bg-white border-b border-gray-200 flex-shrink-0">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                            <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">Aujourd'hui</p>
+                                <p id="statToday" class="text-lg font-bold">0 €</p>
+                            </div>
+                            <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">Cette semaine</p>
+                                <p id="statWeek" class="text-lg font-bold">0 €</p>
+                            </div>
+                            <div class="bg-gradient-to-br from-purple-500 to-indigo-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">Ce mois</p>
+                                <p id="statMonth" class="text-lg font-bold">0 €</p>
+                            </div>
+                            <div class="bg-gradient-to-br from-orange-500 to-amber-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">Cette année</p>
+                                <p id="statYear" class="text-lg font-bold">0 €</p>
+                            </div>
                         </div>
-                        <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-3 rounded-xl">
-                            <p class="text-xs opacity-80">Cette semaine</p>
-                            <p id="statWeek" class="text-lg font-bold">0 €</p>
-                        </div>
-                        <div class="bg-gradient-to-br from-purple-500 to-indigo-600 text-white p-3 rounded-xl">
-                            <p class="text-xs opacity-80">Ce mois</p>
-                            <p id="statMonth" class="text-lg font-bold">0 €</p>
-                        </div>
-                        <div class="bg-gradient-to-br from-orange-500 to-amber-600 text-white p-3 rounded-xl">
-                            <p class="text-xs opacity-80">Cette année</p>
-                            <p id="statYear" class="text-lg font-bold">0 €</p>
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <input type="date" id="startDate" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <span class="text-gray-400">→</span>
+                            <input type="date" id="endDate" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <select id="filterCashier" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                                <option value="">Tous les caissiers</option>
+                            </select>
+                            <button onclick="app.loadTransactions()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                                🔍 Filtrer
+                            </button>
+                            <div class="ml-auto flex gap-2">
+                                <button onclick="app.openClosureModal()" id="btnClosureDay"
+                                    class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-1.5 export-btn"
+                                    data-role="admin" title="Z-ticket">
+                                    📋 Z-Ticket
+                                </button>
+                                <button onclick="app.openClosuresHistory()" id="btnClosuresHistory"
+                                    class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn"
+                                    data-role="admin" title="Historique des clôtures">
+                                    🗂️ Clôtures
+                                </button>
+                                <button onclick="app.exportReport('week')" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">📊 Semaine</button>
+                                <button onclick="app.exportReport('month')" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">📊 Mois</button>
+                                <button onclick="app.exportReport('year')" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">📊 Année</button>
+                                <button onclick="app.dataExport()" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">⬇️ JSON</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="flex flex-wrap gap-2 items-center">
-                        <input type="date" id="startDate" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                    <div id="cashierDailyStats" class="hidden px-4"></div>
+                    <div class="flex-1 overflow-y-auto p-3">
+                        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600">Date</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden sm:table-cell">N° Reçu</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden lg:table-cell">Caissier</th>
+                                        <th class="px-3 py-2 text-right font-semibold text-gray-600">Total</th>
+                                        <th class="px-3 py-2 text-center font-semibold text-gray-600 hidden md:table-cell">Paiement</th>
+                                        <th class="px-3 py-2 text-center font-semibold text-gray-600 w-20">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactionsTable" class="divide-y divide-gray-100">
+                                    <tr><td colspan="6" class="text-center py-4 text-gray-400">Chargement...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ ONGLET ANALYTICS ══════════════════════════════════════ -->
+                <div id="analyticsTab_analytics" class="analytics-tab-content hidden flex flex-col flex-1 overflow-hidden">
+                    <!-- Filtres analytics -->
+                    <div class="p-3 bg-white border-b border-gray-200 flex-shrink-0 flex flex-wrap gap-2 items-center">
+                        <input type="date" id="analyticsStartDate" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
                         <span class="text-gray-400">→</span>
-                        <input type="date" id="endDate" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                        <select id="filterCashier" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                            <option value="">Tous les caissiers</option>
+                        <input type="date" id="analyticsEndDate" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                        <select id="analyticsPeriod" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="day">Par jour</option>
+                            <option value="month">Par mois</option>
+                            <option value="year">Par année</option>
                         </select>
-                        <button onclick="app.loadTransactions()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
-                            🔍 Filtrer
+                        <button onclick="app.loadAnalytics()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                            🔍 Analyser
                         </button>
-                        <div class="ml-auto flex gap-2">
-                            <!-- Bouton clôture journalière — admin uniquement -->
-                            <button onclick="app.openClosureModal()" id="btnClosureDay"
-                                class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-1.5 export-btn"
-                                data-role="admin" title="Effectuer la clôture journalière (Z-ticket)">
-                                📋 Z-Ticket
-                            </button>
-                            <button onclick="app.openClosuresHistory()" id="btnClosuresHistory"
-                                class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn"
-                                data-role="admin" title="Historique des clôtures">
-                                🗂️ Clôtures
-                            </button>
-                            <button onclick="app.exportReport('week')" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">
-                                📊 Semaine
-                            </button>
-                            <button onclick="app.exportReport('month')" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">
-                                📊 Mois
-                            </button>
-                            <button onclick="app.exportReport('year')" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">
-                                📊 Année
-                            </button>
-                            <button onclick="app.dataExport()" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition export-btn" data-role="admin">
-                                ⬇️ JSON
-                            </button>
+                        <div id="analyticsLoader" class="hidden ml-2 text-gray-400 text-sm animate-pulse">Chargement...</div>
+                    </div>
+
+                    <div id="analyticsContent" class="flex-1 overflow-y-auto p-3 space-y-4">
+
+                        <!-- KPI Cards -->
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                            <div class="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">Commandes aujourd'hui</p>
+                                <p id="anaOrdersToday" class="text-2xl font-bold">0</p>
+                            </div>
+                            <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">Total commandes</p>
+                                <p id="anaTotalOrders" class="text-2xl font-bold">0</p>
+                            </div>
+                            <div class="bg-gradient-to-br from-red-500 to-red-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">Annulées</p>
+                                <p id="anaCancelled" class="text-2xl font-bold">0</p>
+                            </div>
+                            <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">CA aujourd'hui</p>
+                                <p id="anaRevenueToday" class="text-xl font-bold">0 €</p>
+                            </div>
+                            <div class="bg-gradient-to-br from-purple-500 to-indigo-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">CA total période</p>
+                                <p id="anaRevenueTotal" class="text-xl font-bold">0 €</p>
+                            </div>
+                            <div class="bg-gradient-to-br from-orange-500 to-amber-600 text-white p-3 rounded-xl">
+                                <p class="text-xs opacity-80">Ticket moyen</p>
+                                <p id="anaAvgTicket" class="text-xl font-bold">0 €</p>
+                            </div>
+                        </div>
+
+                        <!-- Graphique horaire + Répartition type -->
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm p-4">
+                                <h3 class="font-bold text-gray-800 mb-1">⏰ Activité par heure de la journée</h3>
+                                <p class="text-xs text-gray-400 mb-3">Nombre de commandes passées par tranche horaire</p>
+                                <div id="analyticsHourlyChart">
+                                    <p class="text-gray-400 text-center py-4 text-sm">Chargement...</p>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-xl shadow-sm p-4">
+                                <h3 class="font-bold text-gray-800 mb-3">🍽️ Type de commande</h3>
+                                <div id="analyticsByType">
+                                    <p class="text-gray-400 text-center py-4 text-sm">Chargement...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Top produits -->
+                        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-100">
+                                <h3 class="font-bold text-gray-800">🏆 Top produits commandés</h3>
+                                <p class="text-xs text-gray-400 mt-0.5">Quantités vendues + heure de pointe par produit</p>
+                            </div>
+                            <div class="overflow-y-auto max-h-72">
+                                <div id="analyticsTopProducts">
+                                    <p class="text-gray-400 text-center py-4 text-sm">Chargement...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Historique + Performance caissiers -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <!-- Historique par période -->
+                            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                                <div class="px-4 py-3 border-b border-gray-100">
+                                    <h3 class="font-bold text-gray-800">📅 Historique des commandes</h3>
+                                    <p class="text-xs text-gray-400 mt-0.5">Regroupées par jour / mois / année</p>
+                                </div>
+                                <div class="overflow-y-auto max-h-72">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left font-semibold text-gray-600">Période</th>
+                                                <th class="px-3 py-2 text-center font-semibold text-gray-600">Total</th>
+                                                <th class="px-3 py-2 text-center font-semibold text-gray-600">Payées</th>
+                                                <th class="px-3 py-2 text-center font-semibold text-gray-600">Annulées</th>
+                                                <th class="px-3 py-2 text-right font-semibold text-gray-600">CA</th>
+                                                <th class="px-3 py-2 text-right font-semibold text-gray-600 hidden md:table-cell">Moy.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="analyticsHistory" class="divide-y divide-gray-100">
+                                            <tr><td colspan="6" class="text-center py-4 text-gray-400">Chargement...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Performance caissiers -->
+                            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                                <div class="px-4 py-3 border-b border-gray-100">
+                                    <h3 class="font-bold text-gray-800">👤 Performance par caissier</h3>
+                                    <p class="text-xs text-gray-400 mt-0.5">Commandes passées et CA par opérateur</p>
+                                </div>
+                                <div class="overflow-y-auto max-h-72">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left font-semibold text-gray-600">Caissier</th>
+                                                <th class="px-3 py-2 text-center font-semibold text-gray-600">Total</th>
+                                                <th class="px-3 py-2 text-center font-semibold text-gray-600">Payées</th>
+                                                <th class="px-3 py-2 text-center font-semibold text-gray-600">Annulées</th>
+                                                <th class="px-3 py-2 text-right font-semibold text-gray-600">CA</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="analyticsByCashier" class="divide-y divide-gray-100">
+                                            <tr><td colspan="5" class="text-center py-4 text-gray-400">Chargement...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div><!-- /analyticsContent -->
+                </div>
+
+                <!-- ═══ ONGLET COMMANDES ANNULÉES ═════════════════════════════ -->
+                <div id="analyticsTab_cancelled" class="analytics-tab-content hidden flex flex-col flex-1 overflow-hidden">
+                    <div class="p-3 bg-white border-b border-gray-200 flex-shrink-0 flex items-center gap-3">
+                        <h3 class="font-semibold text-gray-800">Historique des commandes annulées</h3>
+                        <span class="text-xs text-gray-400">Suppression définitive réservée à l'administrateur</span>
+                        <button onclick="app.loadAnalytics()" class="ml-auto bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">
+                            🔄 Actualiser
+                        </button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-3">
+                        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600">Date annulation</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600">N° commande</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden sm:table-cell">Créée par</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden md:table-cell">Annulée par</th>
+                                        <th class="px-3 py-2 text-right font-semibold text-gray-600">Montant</th>
+                                        <th class="px-3 py-2 text-center font-semibold text-gray-600 w-24">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cancelledOrdersBody" class="divide-y divide-gray-100">
+                                    <tr><td colspan="6" class="text-center py-6 text-gray-400">Chargement...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
 
-                <!-- Statistiques du caissier (affichées uniquement quand un caissier est sélectionné) -->
-                <div id="cashierDailyStats" class="hidden px-4"></div>
-
-                <div class="flex-1 overflow-y-auto p-3">
-                    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                        <table class="w-full text-sm">
-                            <thead class="bg-gray-50 sticky top-0">
-                                <tr>
-                                    <th class="px-3 py-2 text-left font-semibold text-gray-600">Date</th>
-                                    <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden sm:table-cell">N° Reçu</th>
-                                    <th class="px-3 py-2 text-left font-semibold text-gray-600 hidden lg:table-cell">Caissier</th>
-                                    <th class="px-3 py-2 text-right font-semibold text-gray-600">Total</th>
-                                    <th class="px-3 py-2 text-center font-semibold text-gray-600 hidden md:table-cell">Paiement</th>
-                                    <th class="px-3 py-2 text-center font-semibold text-gray-600 w-20">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="transactionsTable" class="divide-y divide-gray-100">
-                                <tr><td colspan="6" class="text-center py-4 text-gray-400">Chargement...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
             </section>
 
             <!-- ============ FLOOR PLAN SECTION ============ -->

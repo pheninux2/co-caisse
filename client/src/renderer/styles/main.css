@@ -663,3 +663,13 @@ input:focus, select:focus, textarea:focus {
 .order-action-btn-secondary {
   @apply bg-gray-200 hover:bg-gray-300 text-gray-700;
 }
+
+/* Analytics sub-tabs */
+.analytics-tab-btn {
+  @apply text-gray-500 border-b-2 border-transparent hover:text-indigo-600 hover:border-indigo-300 transition;
+}
+
+.active-analytics-tab {
+  @apply text-indigo-600 border-indigo-500 font-semibold;
+}
+

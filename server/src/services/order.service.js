@@ -136,9 +136,12 @@ export const OrderService = {
 
   async getById(db, id) {
     const order = await db.get(`
-      SELECT o.*, COALESCE(u.username, 'Utilisateur supprimé') AS cashier_name
+      SELECT o.*,
+             COALESCE(u.username,  'Utilisateur supprimé') AS cashier_name,
+             COALESCE(uc.username, 'Inconnu')              AS cancelled_by_name
       FROM \`orders\` o
-      LEFT JOIN \`users\` u ON o.created_by = u.id
+      LEFT JOIN \`users\` u  ON o.created_by   = u.id
+      LEFT JOIN \`users\` uc ON o.cancelled_by = uc.id
       WHERE o.id = ?
     `, [id]);
     if (order) {
@@ -234,8 +237,8 @@ export const OrderService = {
     await this._checkModifyPermission(db, userId);
     this._checkOrderEditable(order);
     await db.run(
-      "UPDATE `orders` SET status = 'cancelled' WHERE id = ?",
-      [id]
+      "UPDATE `orders` SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = ? WHERE id = ?",
+      [userId, id]
     );
     // ── Audit log ────────────────────────────────────────────────────────────
     const actor = await db.get('SELECT username FROM `users` WHERE id = ?', [userId]);
@@ -512,6 +515,11 @@ export const OrderService = {
       err.status = 400;
       throw err;
     }
+    if (order.status !== 'served') {
+      const err = new Error('La commande doit être marquée "servie" avant de pouvoir être encaissée');
+      err.status = 400;
+      throw err;
+    }
     const { payment_method, change: changeAmount = 0, notes = '' } = data;
     const transactionId  = uuidv4();
     const receipt_number = `REC-${Date.now()}`;
@@ -536,6 +544,178 @@ export const OrderService = {
     const transaction  = await db.get('SELECT * FROM `transactions` WHERE id = ?', [transactionId]);
     const updatedOrder = await db.get('SELECT * FROM `orders`       WHERE id = ?', [id]);
     return { order: updatedOrder, transaction };
+  },
+
+  // ── Suppression définitive d'une commande annulée (admin uniquement) ─────────
+  async permanentDelete(db, id, userId) {
+    const actor = await db.get('SELECT role FROM `users` WHERE id = ?', [userId]);
+    if (actor?.role !== 'admin') {
+      const err = new Error('Seul un administrateur peut supprimer définitivement une commande');
+      err.status = 403;
+      throw err;
+    }
+    const order = await db.get('SELECT * FROM `orders` WHERE id = ?', [id]);
+    if (!order) return null;
+    if (order.status !== 'cancelled') {
+      const err = new Error('Seules les commandes annulées peuvent être supprimées définitivement');
+      err.status = 400;
+      throw err;
+    }
+    await db.run('DELETE FROM `orders` WHERE id = ?', [id]);
+    await AuditService.log(db, {
+      userId,
+      userName:   actor?.username || null,
+      action:     'order.permanent_delete',
+      targetType: 'order',
+      targetId:   id,
+      details:    { order_number: order.order_number },
+    });
+    return { deleted: true, order_number: order.order_number };
+  },
+
+  // ── Analytics restaurant ──────────────────────────────────────────────────────
+  async getAnalytics(db, { start_date, end_date, period = 'day' } = {}) {
+    const dateFilter = [];
+    const params     = [];
+
+    if (start_date) { dateFilter.push('DATE(o.created_at) >= ?'); params.push(start_date); }
+    if (end_date)   { dateFilter.push('DATE(o.created_at) <= ?'); params.push(end_date); }
+
+    const where = dateFilter.length ? 'WHERE ' + dateFilter.join(' AND ') : '';
+
+    // ── 1. KPI globaux ──────────────────────────────────────────────────────
+    const kpi = await db.get(`
+      SELECT
+        COUNT(*)                                           AS total_orders,
+        SUM(CASE WHEN status = 'paid'      THEN 1 ELSE 0 END) AS paid_orders,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_orders,
+        SUM(CASE WHEN status NOT IN ('cancelled') AND DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_today,
+        SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END)  AS revenue_total,
+        SUM(CASE WHEN status = 'paid' AND DATE(created_at) = CURDATE() THEN total ELSE 0 END) AS revenue_today,
+        AVG(CASE WHEN status = 'paid' THEN total END)          AS avg_ticket
+      FROM \`orders\` o
+      ${where}
+    `, params);
+
+    // ── 2. Commandes par heure (0-23) ──────────────────────────────────────
+    const byHour = await db.all(`
+      SELECT
+        HOUR(o.created_at)               AS hour,
+        COUNT(*)                         AS orders_count,
+        SUM(CASE WHEN o.status = 'paid' THEN o.total ELSE 0 END) AS revenue
+      FROM \`orders\` o
+      ${where}
+      GROUP BY HOUR(o.created_at)
+      ORDER BY HOUR(o.created_at)
+    `, params);
+
+    // ── 3. Top produits (+ heure de pointe par produit) ───────────────────
+    const productWhere = dateFilter.length
+      ? 'WHERE ' + dateFilter.join(' AND ') + " AND o.status NOT IN ('cancelled')"
+      : "WHERE o.status NOT IN ('cancelled')";
+    const allOrders = await db.all(`
+      SELECT o.items, o.created_at
+      FROM \`orders\` o
+      ${productWhere}
+      ORDER BY o.created_at
+    `, params);
+
+    // Agrégation produits côté JS (les items sont en JSON)
+    const productMap = new Map();
+    for (const row of allOrders) {
+      const hour  = new Date(row.created_at).getUTCHours();
+      const items = JSON.parse(row.items || '[]');
+      for (const item of items) {
+        const key = item.id || item.name;
+        if (!productMap.has(key)) {
+          productMap.set(key, { id: key, name: item.name, qty: 0, revenue: 0, hours: new Array(24).fill(0) });
+        }
+        const p = productMap.get(key);
+        p.qty     += item.quantity || 1;
+        p.revenue += (item.price || 0) * (item.quantity || 1);
+        p.hours[hour] += item.quantity || 1;
+      }
+    }
+    const topProducts = [...productMap.values()]
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 15)
+      .map(p => ({
+        ...p,
+        peak_hour: p.hours.indexOf(Math.max(...p.hours)),
+        hours: undefined, // ne pas surcharger la réponse
+      }));
+
+    // ── 4. Historique par période (jour / mois / année) ────────────────────
+    const groupFormat = period === 'year'  ? '%Y'
+                      : period === 'month' ? '%Y-%m'
+                      :                     '%Y-%m-%d';
+
+    const history = await db.all(`
+      SELECT
+        DATE_FORMAT(o.created_at, '${groupFormat}')       AS period_label,
+        COUNT(*)                                           AS total_orders,
+        SUM(CASE WHEN o.status = 'paid'      THEN 1 ELSE 0 END) AS paid_orders,
+        SUM(CASE WHEN o.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_orders,
+        SUM(CASE WHEN o.status = 'paid' THEN o.total ELSE 0 END) AS revenue,
+        AVG(CASE WHEN o.status = 'paid' THEN o.total END)        AS avg_ticket
+      FROM \`orders\` o
+      ${where}
+      GROUP BY period_label
+      ORDER BY period_label DESC
+      LIMIT 90
+    `, params);
+
+    // ── 5. Performance par caissier ────────────────────────────────────────
+    const byCashier = await db.all(`
+      SELECT
+        u.username                                         AS cashier_name,
+        COUNT(o.id)                                        AS total_orders,
+        SUM(CASE WHEN o.status = 'paid' THEN 1 ELSE 0 END) AS paid_orders,
+        SUM(CASE WHEN o.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_orders,
+        SUM(CASE WHEN o.status = 'paid' THEN o.total ELSE 0 END) AS revenue,
+        AVG(CASE WHEN o.status = 'paid' THEN o.total END)  AS avg_ticket
+      FROM \`orders\` o
+      LEFT JOIN \`users\` u ON o.created_by = u.id
+      ${where}
+      GROUP BY o.created_by, u.username
+      ORDER BY revenue DESC
+    `, params);
+
+    // ── 6. Répartition type de commande ───────────────────────────────────
+    const byType = await db.all(`
+      SELECT
+        order_type,
+        COUNT(*)                                                AS orders_count,
+        SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END)   AS revenue
+      FROM \`orders\` o
+      ${where}
+      GROUP BY order_type
+    `, params);
+
+    // ── 7. Commandes annulées (détail) ────────────────────────────────────
+    const cancelledOrders = await db.all(`
+      SELECT
+        o.*,
+        COALESCE(u.username,  'Inconnu') AS cashier_name,
+        COALESCE(uc.username, 'Inconnu') AS cancelled_by_name
+      FROM \`orders\` o
+      LEFT JOIN \`users\` u  ON o.created_by   = u.id
+      LEFT JOIN \`users\` uc ON o.cancelled_by = uc.id
+      WHERE o.status = 'cancelled'
+      ${dateFilter.length ? 'AND ' + dateFilter.join(' AND ') : ''}
+      ORDER BY o.cancelled_at DESC
+      LIMIT 200
+    `, params);
+
+    return {
+      kpi,
+      by_hour:          byHour,
+      top_products:     topProducts,
+      history,
+      by_cashier:       byCashier,
+      by_type:          byType,
+      cancelled_orders: cancelledOrders,
+    };
   },
 
 };

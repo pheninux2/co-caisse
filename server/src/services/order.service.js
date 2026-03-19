@@ -43,20 +43,9 @@ export const OrderService = {
       throw err;
     }
 
-    // ── Contrôle table occupée (uniquement sur place, sauf si force:true) ──────
-    if (table_number && order_type === 'dine_in' && !force) {
-      const existing = await this.getActiveByTable(db, table_number);
-      if (existing) {
-        const statusLabels = { draft: 'En attente', in_kitchen: 'En cuisine', ready: 'Prête', served: 'Servie' };
-        const err = new Error(`Table ${table_number} occupée — commande ${existing.order_number} (${statusLabels[existing.status] || existing.status}) en cours`);
-        err.status = 409;
-        err.conflict = existing;
-        throw err;
-      }
-    }
-
-    // ── Contrôle attribution de table ────────────────────────────────────────
-    // Si une table a un serveur assigné, seul ce serveur (ou admin/manager) peut y ouvrir une commande.
+    // ── Contrôle attribution de table (prioritaire sur le contrôle d'occupation) ─
+    // Si une table est assignée à un autre caissier, bloquer immédiatement,
+    // même si la table est occupée (évite d'afficher le popup de conflit au lieu de l'erreur d'attribution).
     if (table_number && order_type === 'dine_in') {
       const actor = await db.get('SELECT role FROM `users` WHERE id = ?', [userId]);
       if (!['admin', 'manager'].includes(actor?.role)) {
@@ -67,11 +56,23 @@ export const OrderService = {
         if (table?.assigned_waiter_id && table.assigned_waiter_id !== userId) {
           const assignedUser = await db.get('SELECT username FROM `users` WHERE id = ?', [table.assigned_waiter_id]);
           const err = new Error(
-            `La table ${table_number} est assignée à ${assignedUser?.username || 'un autre serveur'} — vous ne pouvez pas y ouvrir une commande`
+            `La table ${table_number} est assignée à ${assignedUser?.username || 'un autre caissier'} — vous ne pouvez pas y ouvrir une commande`
           );
           err.status = 403;
           throw err;
         }
+      }
+    }
+
+    // ── Contrôle table occupée (uniquement sur place, sauf si force:true) ──────
+    if (table_number && order_type === 'dine_in' && !force) {
+      const existing = await this.getActiveByTable(db, table_number);
+      if (existing) {
+        const statusLabels = { draft: 'En attente', in_kitchen: 'En cuisine', ready: 'Prête', served: 'Servie' };
+        const err = new Error(`Table ${table_number} occupée — commande ${existing.order_number} (${statusLabels[existing.status] || existing.status}) en cours`);
+        err.status = 409;
+        err.conflict = existing;
+        throw err;
       }
     }
 

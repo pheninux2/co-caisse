@@ -9,6 +9,6 @@ ALTER TABLE `orders`
   ADD COLUMN IF NOT EXISTS `cancelled_by` VARCHAR(36) DEFAULT NULL
   COMMENT 'User id ayant annulé la commande';
 
--- Index pour accélérer les requêtes analytics sur les heures
+-- Index pour accélérer les requêtes analytics sur les commandes
 ALTER TABLE `orders`
-  ADD INDEX IF NOT EXISTS `idx_orders_hour` ((HOUR(`created_at`)));
+  ADD INDEX IF NOT EXISTS `idx_orders_created_at` (`created_at`);
